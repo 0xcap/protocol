@@ -31,7 +31,7 @@ contract Trading {
 	}
 
 	struct Product {
-		uint256 leverage; // max leverage
+		uint256 leverage; // max leverage x 10**6
 		uint256 fee; // In % * 100. e.g. 0.5% is 50
 		uint256 interest; // for 360 days, in % * 100. E.g. 5.35% is 535
 		address feed; // chainlink
@@ -42,75 +42,34 @@ contract Trading {
 
 	address public owner;
 	uint256 public currentPositionId;
-	uint256 public liquidatorBounty;
+	uint256 public liquidatorBounty = 5; // 5 = 5%
+	uint256 public stakingPeriod = 2592000; // 30 days
+	uint256 public unstakingPeriod = 28800; // 8 hours
+	uint256 public settlementTime = 3 * 60;
 
-	// Bases lookup
 	mapping(uint8 => address) private bases; // baseId => DAI address
-
-	// Products lookup
 	mapping(uint16 => Product) private products; // productId => Product
-	
-	// Positions lookup
 	mapping(uint256 => Position) private positions; // positionId => Position
-
-	// Used to keep track of a user's positions
 	mapping(address => mapping(uint8 => UintSet.Set)) private userPositionIds; // user => baseId => [Position ids]
-	
-	// Tracks currently settling positions
 	UintSet.Set private settlingIds;
 
-	// Vaults
-	uint256 public stakingPeriod; // in blocks
-	uint256 public unstakingPeriod; // in blocks
-
 	mapping(uint8 => uint256) private caps; // baseId => vault cap
-
-	mapping(uint8 => uint256) private balances; // baseId => vault total balance (varies with profits and losses)
-
+	mapping(uint8 => uint256) private balances; // baseId => vault total balance (varies with P/L)
 	mapping(uint8 => uint256) private totalStaked; // baseId => vault total staked by users
 	mapping(address => mapping(uint8 => uint256)) private userStaked; // address => baseId => staked by user
 
-	// Settlement
-	uint256 settlementTime = 3 * 60;
-
-
-	// Events
-	event ProductAdded(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed);
-	event ProductUpdated(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive);
-	event ProductRemoved(uint16 productId);
-	event BaseAdded(uint8 baseId, address base);
-	event BaseRemoved(uint8 baseId);
-	event VaultCapUpdated(uint8 baseId, uint256 newCap);
-	event LiquidatorBountyUpdated(uint256 newShare);
-	event StakingPeriodUpdated(uint256 period);
-	event UnstakingPeriodUpdated(uint256 period);
-	event OwnerUpdated(address newOwner);
-
-	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
-	event Unstaked(address indexed to, uint8 indexed baseId, uint256 amount);
-
-	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
-	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
-	event ClosePosition(uint256 id, address indexed user, uint256 priceWithFee, uint256 margin, int256 pnl);
-
-	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
-
-	event LiquidatedPosition(uint256 indexed positionId, address indexed by, uint256 reward);
+	mapping(uint8 => uint256) private maxOpenInterest; // risk limit, should be 1x-2x vault cap
 
 	// Constructor
 
 	constructor() {
 		console.log("Initialized Trading contract.");
 		owner = msg.sender;
-		liquidatorBounty = 5;
 	}
 
-	// Methods
-
-	// Vault
+	// Vault methods
 
 	function stake(uint8 baseId, uint256 amount) external {
-		// if pool + stake <= cap, stake
 		require(bases[baseId] != address(0), "!B");
 		require(balances[baseId] + amount <= caps[baseId], "!C");
 		balances[baseId] += amount;
@@ -121,12 +80,12 @@ contract Trading {
 	}
 
 	function unstake(uint8 baseId, uint256 _stake) external {
-		// if block.timestamp % stakingPeriod < unstakingPeriod (8 hours), user can unstake. amount = (userStaked / totalStaked) * vault balance
-		require(block.timestamp % stakingPeriod < unstakingPeriod, "!P");
-		// stake = share of user in pool, like tokens but not emitted
+		// !!! Local test, uncomment in prod
+		//require(block.timestamp % stakingPeriod < unstakingPeriod, "!P");
 		require(_stake <= userStaked[msg.sender][baseId], "!S");
-		// amount unstaked = (stake / total staked) * balance
-		uint256 amountToSend = (_stake / totalStaked[baseId]) * balances[baseId];
+		uint256 amountToSend = _stake * balances[baseId] / totalStaked[baseId];
+		console.log('>params Unstake', userStaked[msg.sender][baseId], totalStaked[baseId], balances[baseId]);
+		console.log('>amountToSend Unstake', amountToSend);
 		userStaked[msg.sender][baseId] -= _stake;
 		totalStaked[baseId] -= _stake;
 		balances[baseId] -= amountToSend;
@@ -134,7 +93,7 @@ contract Trading {
 		emit Unstaked(msg.sender, baseId, amountToSend);
 	}
 
-	// User
+	// Trading methods
 
 	function submitOrder(
 		uint8 baseId,
@@ -152,7 +111,8 @@ contract Trading {
 		Product memory product = products[productId];
 		require(product.isActive, "!PA"); // Product paused or doesn't exist
 
-		require(leverage <= product.leverage, '!L');
+		require(leverage > 0, '!L1');
+		require(leverage <= product.leverage, '!L2');
 
 		uint256 price = getLatestPrice(product.feed);
 
@@ -197,8 +157,6 @@ contract Trading {
 		address user = msg.sender;
 
 		console.log('priceWithFee', priceWithFee);
-
-		// TODO: check against risk limits
 
 		uint256 liquidationPrice;
 		if (isLong) {
@@ -245,7 +203,9 @@ contract Trading {
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
-		uint256 newLeverage = position.leverage * (position.margin / newMargin);
+		uint256 newLeverage = position.leverage * position.margin / newMargin;
+		console.log('params', position.leverage, position.margin, newMargin);
+		console.log('newLeverage', newLeverage);
 		require(newLeverage >= 1, "!L");
 
 		uint256 newLiquidationPrice;
@@ -286,13 +246,14 @@ contract Trading {
 		console.log('position price', position.price);
 		console.log('priceWithFee', priceWithFee);
 		console.log('margin', margin);
-
+		console.log('position.margin', position.margin);
+		console.log('position.leverage', position.leverage);
 		// P/L
 		int256 pnl;
 		if (position.isLong) {
-			pnl = int256(position.margin) * int256(position.leverage) * (int256(priceWithFee) - int256(position.price)) / int256(position.price);
+			pnl = int256(margin) * int256(position.leverage) * (int256(priceWithFee) - int256(position.price)) / int256(position.price) / 1000000;
 		} else {
-			pnl = int256(position.margin) * int256(position.leverage) * (int256(position.price) - int256(priceWithFee)) / int256(position.price);
+			pnl = int256(margin) * int256(position.leverage) * (int256(position.price) - int256(priceWithFee)) / int256(position.price) / 1000000;
 		}
 		
 		// realize interest pro rata based on amount being closed
@@ -332,6 +293,8 @@ contract Trading {
 			amountToSendUser = margin + positivePnl;
 		}
 
+		console.log('amountToSendUser', amountToSendUser);
+
 		// send margin unlocked +/- pnl to user
 		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSendUser);
 
@@ -339,7 +302,7 @@ contract Trading {
 
 	}
 
-	// Liquidation
+	// Liquidation methods
 
 	function liquidatePosition(uint256 positionId) external {
 
@@ -350,9 +313,17 @@ contract Trading {
 		Product memory product = products[position.productId];
 
 		uint256 price = getLatestPrice(product.feed);
+
+		// !!! local test
+		price = 1350000000000;
+
 		uint256 priceWithFee = _calculatePriceWithFee(price, product.fee, !position.isLong);
 
-		if (position.isLong && priceWithFee < position.liquidationPrice || !position.isLong && priceWithFee > position.liquidationPrice) {
+		console.log('Price when liquidating', priceWithFee);
+		console.log('position.liquidationPrice', position.liquidationPrice);
+
+		if (position.isLong && priceWithFee <= position.liquidationPrice || !position.isLong && priceWithFee >= position.liquidationPrice) {
+			console.log('liquidation happening');
 			// Can be liquidated
 			uint256 vaultReward = position.margin * (100 - liquidatorBounty) / 100;
 			uint256 liquidatorReward = position.margin - vaultReward;
@@ -361,13 +332,17 @@ contract Trading {
 			// send margin liquidatorReward
 			IERC20(bases[position.baseId]).safeTransfer(msg.sender, liquidatorReward);
 
-			emit LiquidatedPosition(positionId, msg.sender, liquidatorReward);
+			userPositionIds[position.owner][position.baseId].remove(positionId);
+			delete positions[positionId];
 
+			console.log('rewards', vaultReward, liquidatorReward);
+
+			emit LiquidatedPosition(positionId, msg.sender, vaultReward, liquidatorReward);
 		}
 
 	}
 
-	// Settlement
+	// Price settlement methods
 
 	function checkSettlement() external view returns (uint256[] memory) {
 
@@ -441,7 +416,7 @@ contract Trading {
 
 	}
 
-	// Internal
+	// Internal utilities
 
 	function _calculatePriceWithFee(uint256 price, uint256 fee, bool isLong) internal pure returns(uint256) {
 		if (isLong) {
@@ -455,6 +430,8 @@ contract Trading {
 		if (block.timestamp < uint256(timestamp) - 1800) return 0;
 		return amount * (interest / 10000) * (block.timestamp - uint256(timestamp)) / 360 days;
 	}
+
+	// Getters
 
 	function getLatestPrice(address feed) public pure returns (uint256) {
 		/*
@@ -474,8 +451,6 @@ contract Trading {
 		int256 price = 33500 * 10**8;
 		return uint256(price);
 	}
-
-	// Getters
 
 	function getBase(uint8 baseId) external view returns(address) {
 		return bases[baseId];
@@ -578,6 +553,11 @@ contract Trading {
 		emit UnstakingPeriodUpdated(period);
 	}
 
+	function setSettlementTime(uint256 time) external onlyOwner {
+		settlementTime = time;
+		emit SettlementTimeUpdated(time);
+	}
+
 	function setCap(uint8 baseId, uint256 newCap) external onlyOwner {
 		caps[baseId] = newCap;
 		emit VaultCapUpdated(baseId, newCap);
@@ -587,6 +567,31 @@ contract Trading {
 		owner = newOwner;
 		emit OwnerUpdated(newOwner);
 	}
+
+	// Events
+
+	event ProductAdded(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed);
+	event ProductUpdated(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive);
+	event ProductRemoved(uint16 productId);
+	event BaseAdded(uint8 baseId, address base);
+	event BaseRemoved(uint8 baseId);
+	event VaultCapUpdated(uint8 baseId, uint256 newCap);
+	event StakingPeriodUpdated(uint256 period);
+	event UnstakingPeriodUpdated(uint256 period);
+	event SettlementTimeUpdated(uint256 time);
+	event LiquidatorBountyUpdated(uint256 newShare);
+	event OwnerUpdated(address newOwner);
+
+	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
+	event Unstaked(address indexed to, uint8 indexed baseId, uint256 amount);
+
+	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
+	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
+	event ClosePosition(uint256 id, address indexed user, uint256 priceWithFee, uint256 margin, int256 pnl);
+
+	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
+
+	event LiquidatedPosition(uint256 indexed positionId, address indexed by, uint256 vaultReward, uint256 liquidatorReward);
 
 	// Modifiers
 
