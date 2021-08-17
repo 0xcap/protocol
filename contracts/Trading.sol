@@ -68,31 +68,34 @@ contract Trading {
 	mapping(uint8 => uint256) private balances; // baseId => vault total balance (varies with profits and losses)
 
 	mapping(uint8 => uint256) private totalStaked; // baseId => vault total staked by users
-	mapping(address => mapping(uint8 => uint256)) private userStaked; // baseId => address => staked by user
+	mapping(address => mapping(uint8 => uint256)) private userStaked; // address => baseId => staked by user
 
 	// Settlement
 	uint256 settlementTime = 3 * 60;
 
 
 	// Events
-	event ProductAdded(bytes32 product, uint256 leverage, uint256 fee, uint256 interest, address feed);
-	event ProductUpdated(bytes32 product, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive);
-	event ProductRemoved(bytes32 product);
-	event BaseAdded(address base);
-	event BaseRemoved(address base);
+	event ProductAdded(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed);
+	event ProductUpdated(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive);
+	event ProductRemoved(uint16 productId);
+	event BaseAdded(uint8 baseId, address base);
+	event BaseRemoved(uint8 baseId);
+	event VaultCapUpdated(uint8 baseId, uint256 newCap);
 	event LiquidatorBountyUpdated(uint256 newShare);
+	event StakingPeriodUpdated(uint256 period);
+	event UnstakingPeriodUpdated(uint256 period);
 	event OwnerUpdated(address newOwner);
 
 	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
 	event Unstaked(address indexed to, uint8 indexed baseId, uint256 amount);
 
-	event NewPosition(uint256 id, address indexed user, address indexed base, bytes32 indexed product, bool isLong, uint256 priceWithFee, uint256 amount);
-	event AddMargin(uint256 id, address indexed user, uint256 priceWithFee, uint256 amount);
-	event ClosePosition(uint256 id, address indexed user, uint256 priceWithFee, uint256 amount, int256 pnl);
+	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
+	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
+	event ClosePosition(uint256 id, address indexed user, uint256 priceWithFee, uint256 margin, int256 pnl);
 
 	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
 
-	event LiquidatedPosition(address indexed user, address indexed by);
+	event LiquidatedPosition(uint256 indexed positionId, address indexed by, uint256 reward);
 
 	// Constructor
 
@@ -103,72 +106,6 @@ contract Trading {
 	}
 
 	// Methods
-
-	// TODO: get product, get position, and other getters for private vars
-	// todo: release margin if profitable
-
-	function addProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed) external onlyOwner {
-		Product memory product = products[productId];
-		require(product.leverage == 0, "!PE"); // Product already exists with this id
-		require(leverage > 0, "!L");
-		require(feed != address(0), "!F");
-		products[productId] = Product({
-			leverage: leverage,
-			fee: fee,
-			interest: interest,
-			feed: feed,
-			isActive: true
-		});
-		emit ProductAdded(productId, leverage, fee, interest, feed);
-	}
-
-	function updateProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive) external onlyOwner {
-		Product storage product = products[productId];
-		require(product.leverage > 0, "!PE"); // Product doesn't exist
-		require(leverage > 0, "!L");
-		require(feed != address(0), "!F");
-		product.leverage = leverage;
-		product.fee = fee;
-		product.interest = interest;
-		product.feed = feed;
-		product.isActive = isActive;
-		emit ProductUpdated(productId, product.leverage, product.fee, product.interest, product.feed, product.isActive);
-	}
-
-	function removeProduct(uint16 productId) external onlyOwner {
-		delete products[productId];
-		emit ProductRemoved(productId);
-	}
-
-	function addBase(uint8 baseId, address base) external onlyOwner {
-		bases[baseId] = base;
-		emit BaseAdded(baseId, base);
-	}
-
-	function removeBase(uint8 baseId) external onlyOwner {
-		delete bases[baseId];
-		emit BaseRemoved(baseId);
-	}
-
-	function setLiquidatorBounty(uint256 newBounty) external onlyOwner {
-		liquidatorBounty = newBounty;
-		emit LiquidatorBountyUpdated(newBounty);
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-		emit OwnerUpdated(newOwner);
-	}
-
-	function getUserPositions(address user, uint8 baseId) external view returns (Position[] memory _positions) {
-		uint256 length = userPositionIds[user][baseId].length();
-		_positions = new Position[](length);
-		for (uint256 i=0; i < length; i++) {
-			uint256 id = userPositionIds[user][baseId].at(i);
-			_positions[i] = positions[id];
-		}
-		return _positions;
-	}
 
 	// Vault
 
@@ -183,15 +120,15 @@ contract Trading {
 		emit Staked(msg.sender, baseId, amount);
 	}
 
-	function unstake(uint8 baseId, uint256 stake) external {
+	function unstake(uint8 baseId, uint256 _stake) external {
 		// if block.timestamp % stakingPeriod < unstakingPeriod (8 hours), user can unstake. amount = (userStaked / totalStaked) * vault balance
 		require(block.timestamp % stakingPeriod < unstakingPeriod, "!P");
 		// stake = share of user in pool, like tokens but not emitted
-		require(stake <= userStaked[msg.sender][baseId], "!S");
+		require(_stake <= userStaked[msg.sender][baseId], "!S");
 		// amount unstaked = (stake / total staked) * balance
-		uint256 amountToSend = (stake / totalStaked[baseId]) * balances[baseId];
-		userStaked[msg.sender][baseId] -= stake;
-		totalStaked[baseId] -= stake;
+		uint256 amountToSend = (_stake / totalStaked[baseId]) * balances[baseId];
+		userStaked[msg.sender][baseId] -= _stake;
+		totalStaked[baseId] -= _stake;
 		balances[baseId] -= amountToSend;
 		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSend);
 		emit Unstaked(msg.sender, baseId, amountToSend);
@@ -205,7 +142,8 @@ contract Trading {
 		bool isLong,
 		uint256 existingPositionId,
 		uint256 margin,
-		uint256 leverage
+		uint256 leverage,
+		bool releaseMargin
 	) external {
 
 		address base = bases[baseId];
@@ -236,7 +174,7 @@ contract Trading {
 				_addMargin(existingPositionId, margin);
 
 			} else {
-				_closePosition(existingPositionId, margin, priceWithFee, product.interest);
+				_closePosition(existingPositionId, margin, priceWithFee, product.interest, releaseMargin);
 
 			}
 
@@ -330,7 +268,8 @@ contract Trading {
 		uint256 existingPositionId, 
 		uint256 margin, 
 		uint256 priceWithFee, 
-		uint256 interest
+		uint256 interest,
+		bool releaseMargin
 	) internal {
 
 		// Close (full or partial)
@@ -385,9 +324,10 @@ contract Trading {
 				amountToSendUser = margin - positivePnl;
 			}
 		} else {
+			if (releaseMargin) pnl = 0; // in cases to unlock margin when there's not enough in the vault, user can always get back their margin
 			positivePnl = uint256(pnl);
 			console.log('pnl', positivePnl);
-			require(balances[baseId] > positivePnl, "!IF");
+			require(balances[baseId] >= positivePnl, "!IF");
 			balances[baseId] -= positivePnl;
 			amountToSendUser = margin + positivePnl;
 		}
@@ -399,7 +339,36 @@ contract Trading {
 
 	}
 
-	// Check for price settlement
+	// Liquidation
+
+	function liquidatePosition(uint256 positionId) external {
+
+		Position storage position = positions[positionId];
+		require(!position.isSettling, "!S");
+		require(position.margin > 0, "!M");
+
+		Product memory product = products[position.productId];
+
+		uint256 price = getLatestPrice(product.feed);
+		uint256 priceWithFee = _calculatePriceWithFee(price, product.fee, !position.isLong);
+
+		if (position.isLong && priceWithFee < position.liquidationPrice || !position.isLong && priceWithFee > position.liquidationPrice) {
+			// Can be liquidated
+			uint256 vaultReward = position.margin * (100 - liquidatorBounty) / 100;
+			uint256 liquidatorReward = position.margin - vaultReward;
+			balances[position.baseId] += vaultReward;
+
+			// send margin liquidatorReward
+			IERC20(bases[position.baseId]).safeTransfer(msg.sender, liquidatorReward);
+
+			emit LiquidatedPosition(positionId, msg.sender, liquidatorReward);
+
+		}
+
+	}
+
+	// Settlement
+
 	function checkSettlement() external view returns (uint256[] memory) {
 
 		uint256 length = settlingIds.length();
@@ -472,33 +441,9 @@ contract Trading {
 
 	}
 
-	function liquidatePosition(uint256 positionId) external {
+	// Internal
 
-		Position storage position = positions[positionId];
-		require(!position.isSettling, "!S");
-		require(position.margin > 0, "!M");
-
-		Product memory product = products[position.productId];
-
-		uint256 price = getLatestPrice(product.feed);
-		uint256 priceWithFee = _calculatePriceWithFee(price, product.fee, !position.isLong);
-
-		if (position.isLong && priceWithFee < position.liquidationPrice || !position.isLong && priceWithFee > position.liquidationPrice) {
-			// Can be liquidated
-			uint256 vaultReward = position.margin * (100 - liquidatorBounty) / 100;
-			uint256 liquidatorReward = position.margin - vaultReward;
-			balances[position.baseId] += vaultReward;
-
-			// send margin liquidatorReward
-			IERC20(bases[position.baseId]).safeTransfer(msg.sender, liquidatorReward);
-
-			emit LiquidatedPosition(positionId, msg.sender, liquidatorReward);
-
-		}
-
-	}
-
-	function _calculatePriceWithFee(uint256 price, uint256 fee, bool isLong) internal view returns(uint256) {
+	function _calculatePriceWithFee(uint256 price, uint256 fee, bool isLong) internal pure returns(uint256) {
 		if (isLong) {
 			return price + price * fee / 10000;
 		} else {
@@ -511,7 +456,7 @@ contract Trading {
 		return amount * (interest / 10000) * (block.timestamp - uint256(timestamp)) / 360 days;
 	}
 
-	function getLatestPrice(address feed) public view returns (uint256) {
+	function getLatestPrice(address feed) public pure returns (uint256) {
 		/*
 		uint8 decimals = AggregatorV3Interface(feed).decimals();
 		// standardize price to 8 decimals
@@ -530,13 +475,124 @@ contract Trading {
 		return uint256(price);
 	}
 
+	// Getters
+
+	function getBase(uint8 baseId) external view returns(address) {
+		return bases[baseId];
+	}
+
+	function getProduct(uint16 productId) external view returns(Product memory product) {
+		product = products[productId];
+		require(product.leverage > 0, "!PE");
+		return product;
+	}
+
+	function getPosition(uint256 positionId) external view returns(Position memory position) {
+		position = positions[positionId];
+		return position;
+	}
+
+	function getCap(uint8 baseId) external view returns(uint256) {
+		return caps[baseId];
+	}
+
+	function getBalance(uint8 baseId) external view returns(uint256) {
+		return balances[baseId];
+	}
+
+	function getTotalStaked(uint8 baseId) external view returns(uint256) {
+		return totalStaked[baseId];
+	}
+
+	function getUserStaked(address user, uint8 baseId) external view returns(uint256) {
+		return userStaked[user][baseId];
+	}
+	
+	function getUserPositions(address user, uint8 baseId) external view returns (Position[] memory _positions) {
+		uint256 length = userPositionIds[user][baseId].length();
+		_positions = new Position[](length);
+		for (uint256 i=0; i < length; i++) {
+			uint256 id = userPositionIds[user][baseId].at(i);
+			_positions[i] = positions[id];
+		}
+		return _positions;
+	}
+
+	// Owner methods
+
+	function addProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed) external onlyOwner {
+		Product memory product = products[productId];
+		require(product.leverage == 0, "!PE"); // Product already exists with this id
+		require(leverage > 0, "!L");
+		require(feed != address(0), "!F");
+		products[productId] = Product({
+			leverage: leverage,
+			fee: fee,
+			interest: interest,
+			feed: feed,
+			isActive: true
+		});
+		emit ProductAdded(productId, leverage, fee, interest, feed);
+	}
+
+	function updateProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, bool isActive) external onlyOwner {
+		Product storage product = products[productId];
+		require(product.leverage > 0, "!PE"); // Product doesn't exist
+		require(leverage > 0, "!L");
+		require(feed != address(0), "!F");
+		product.leverage = leverage;
+		product.fee = fee;
+		product.interest = interest;
+		product.feed = feed;
+		product.isActive = isActive;
+		emit ProductUpdated(productId, product.leverage, product.fee, product.interest, product.feed, product.isActive);
+	}
+
+	function removeProduct(uint16 productId) external onlyOwner {
+		delete products[productId];
+		emit ProductRemoved(productId);
+	}
+
+	function addBase(uint8 baseId, address base) external onlyOwner {
+		bases[baseId] = base;
+		emit BaseAdded(baseId, base);
+	}
+
+	function removeBase(uint8 baseId) external onlyOwner {
+		delete bases[baseId];
+		emit BaseRemoved(baseId);
+	}
+
+	function setLiquidatorBounty(uint256 newBounty) external onlyOwner {
+		liquidatorBounty = newBounty;
+		emit LiquidatorBountyUpdated(newBounty);
+	}
+
+	function setStakingPeriod(uint256 period) external onlyOwner {
+		stakingPeriod = period;
+		emit StakingPeriodUpdated(period);
+	}
+
+	function setUnstakingPeriod(uint256 period) external onlyOwner {
+		unstakingPeriod = period;
+		emit UnstakingPeriodUpdated(period);
+	}
+
+	function setCap(uint8 baseId, uint256 newCap) external onlyOwner {
+		caps[baseId] = newCap;
+		emit VaultCapUpdated(baseId, newCap);
+	}
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+		emit OwnerUpdated(newOwner);
+	}
+
 	// Modifiers
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, '!O');
 		_;
 	}
-
-
 
 }
