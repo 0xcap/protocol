@@ -245,7 +245,6 @@ contract Trading {
 
 		require(margin <= position.margin, "!PM");
 
-		address user = msg.sender;
 		uint8 baseId = position.baseId;
 
 		console.log('position price', position.price);
@@ -262,12 +261,8 @@ contract Trading {
 		}
 		
 		// realize interest pro rata based on amount being closed
-		uint256 interestToRealize = _calculateInterest(margin * position.leverage, position.timestamp, interest);
-		
-		console.log('interestToRealize', interestToRealize);
-
 		// subtract interest from P/L
-		pnl -= int256(interestToRealize);
+		pnl -= int256(_calculateInterest(margin * position.leverage, position.timestamp, interest));
 
 		if (margin < position.margin) {
 			// if partial close
@@ -276,7 +271,7 @@ contract Trading {
 			// if full close
 			console.log('full close');
 			delete positions[existingPositionId];
-			userPositionIds[user][baseId].remove(existingPositionId);
+			userPositionIds[msg.sender][baseId].remove(existingPositionId);
 		}
 
 		// update vault
@@ -303,7 +298,7 @@ contract Trading {
 		// send margin unlocked +/- pnl to user
 		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSendUser);
 
-		emit ClosePosition(existingPositionId, user, priceWithFee, margin, pnl);
+		emit ClosePosition(existingPositionId, msg.sender, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, false);
 
 	}
 
@@ -338,11 +333,14 @@ contract Trading {
 			IERC20(bases[position.baseId]).safeTransfer(msg.sender, liquidatorReward);
 
 			userPositionIds[position.owner][position.baseId].remove(positionId);
-			delete positions[positionId];
-
+			
 			console.log('rewards', vaultReward, liquidatorReward);
 
-			emit LiquidatedPosition(positionId, msg.sender, vaultReward, liquidatorReward);
+			emit ClosePosition(positionId, position.owner, position.baseId, position.productId, priceWithFee, position.margin, position.leverage, -1 * int256(position.margin), true);
+
+			delete positions[positionId];
+
+			emit PositionLiquidated(positionId, msg.sender, vaultReward, liquidatorReward);
 		}
 
 	}
@@ -594,11 +592,11 @@ contract Trading {
 
 	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
-	event ClosePosition(uint256 id, address indexed user, uint256 priceWithFee, uint256 margin, int256 pnl);
+	event ClosePosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, uint256 priceWithFee, uint256 margin, uint256 leverage, int256 pnl, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
 
-	event LiquidatedPosition(uint256 indexed positionId, address indexed by, uint256 vaultReward, uint256 liquidatorReward);
+	event PositionLiquidated(uint256 indexed positionId, address indexed by, uint256 vaultReward, uint256 liquidatorReward);
 
 	// Modifiers
 
