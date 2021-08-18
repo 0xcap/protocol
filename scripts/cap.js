@@ -33,6 +33,7 @@ async function main() {
   const signer = await hre.ethers.provider.getSigner();
 
   const account = await signer.getAddress();
+  console.log('account', account);
 
   // Mint USDC Mock
   const USDC = await hre.ethers.getContractFactory("USDCMock");
@@ -53,17 +54,29 @@ async function main() {
   await trading.addProduct(1, 50 * 10**6, 50, 500, "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"); // chainlink feed
   console.log('Added product BTC/USD');
 
+  await trading.addProduct(2, 50 * 10**6, 50, 500, "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"); // chainlink feed
+  console.log('Added product ETH/USD');
+
   await trading.setCap(1, 100000 * 10**6); // 100K USDC
   console.log('Set vault cap', 100000);
 
-  const randomWallet = await hre.ethers.Wallet.createRandom();
-  console.log('Created random wallet', randomWallet);
+  //const randomWallet = await hre.ethers.Wallet.createRandom();
+  //console.log('Created random wallet', randomWallet);
 
   await usdc.mint(account, 10000000 * 10**6);
   console.log('Minted USDC to', account, (await usdc.balanceOf(account)).toNumber());
 
-  await usdc.approve(trading.address, 10000000 * 10**6);
-  console.log('Approved Trading contract to spend USDC');
+  //await usdc.approve(trading.address, 10000000 * 10**6);
+  //console.log('Approved Trading contract to spend USDC');
+
+  // Stake in vault
+  //await trading.stake(1, 10000 * 10**6);
+  //console.log('Staked', 10000);
+
+  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
+
+  return;
+  // below this are local tests, not needing for client interaction
 
   //await usdc.transfer(randomWallet.address, 2000 * 10**6);
   //console.log((await usdc.balanceOf(randomWallet.address)).toNumber());
@@ -118,12 +131,6 @@ async function main() {
 
   console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
 
-  // Stake in vault
-  await trading.stake(1, 10000 * 10**6);
-  console.log('Staked', 10000);
-
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-
   // close position partial (25)
   await trading.submitOrder(1, 1, false, 1, 25 * 10**6, 1, false);
   console.log('Closed partially');
@@ -161,6 +168,7 @@ async function main() {
   console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
   */
 
+  /*
   // Unstake partial
   await trading.unstake(1, 2000 * 10**6);
   console.log('Unstake partial');
@@ -174,6 +182,7 @@ async function main() {
 
   console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
   console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  */
 
 }
 

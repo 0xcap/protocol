@@ -25,9 +25,10 @@ contract Trading {
 		bool isLong; // 1 byte
 		bool isSettling; // 1 byte
 		uint256 margin; // 32 bytes
-		uint256 leverage; // 32 bytes
+		uint256 leverage; // 32 bytes x 10**6
 		uint256 price; // 32 bytes
 		uint256 liquidationPrice; // 32 bytes
+		uint256 id; // 32 bytes
 	}
 
 	struct Product {
@@ -105,8 +106,7 @@ contract Trading {
 		bool releaseMargin
 	) external {
 
-		address base = bases[baseId];
-		require(base != address(0), '!B');
+		// TODO: these are not needed for add margin, just for close
 
 		Product memory product = products[productId];
 		require(product.isActive, "!PA"); // Product paused or doesn't exist
@@ -114,7 +114,7 @@ contract Trading {
 		require(leverage > 0, '!L1');
 		require(leverage <= product.leverage, '!L2');
 
-		uint256 price = getLatestPrice(product.feed);
+		uint256 price = getLatestPrice(productId);
 
 		console.log('PRICE', price);
 
@@ -130,6 +130,8 @@ contract Trading {
 			Position memory position = positions[existingPositionId];
 
 			if (position.isLong == isLong) {
+				address base = bases[position.baseId];
+				require(base != address(0), '!BM');
 				IERC20(base).safeTransferFrom(msg.sender, address(this), margin);
 				_addMargin(existingPositionId, margin);
 
@@ -139,6 +141,8 @@ contract Trading {
 			}
 
 		} else {
+			address base = bases[baseId];
+			require(base != address(0), '!B');
 			IERC20(base).safeTransferFrom(msg.sender, address(this), margin);
 			_openPosition(baseId, productId, isLong, margin, leverage, priceWithFee);
 		}
@@ -177,7 +181,8 @@ contract Trading {
 			timestamp: uint64(block.timestamp),
 			isLong: isLong,
 			isSettling: true,
-			liquidationPrice: liquidationPrice
+			liquidationPrice: liquidationPrice,
+			id: currentPositionId
 		});
 		userPositionIds[user][baseId].add(currentPositionId);
 		settlingIds.add(currentPositionId);
@@ -312,7 +317,7 @@ contract Trading {
 
 		Product memory product = products[position.productId];
 
-		uint256 price = getLatestPrice(product.feed);
+		uint256 price = getLatestPrice(position.productId);
 
 		// !!! local test
 		price = 1350000000000;
@@ -356,7 +361,7 @@ contract Trading {
 			Position memory position = positions[id];
 			Product memory product = products[position.productId];
 
-			uint256 price = getLatestPrice(product.feed);
+			uint256 price = getLatestPrice(position.productId);
 
 			console.log('block.timestamp', block.timestamp);
 			console.log('position.timestamp', position.timestamp);
@@ -394,7 +399,7 @@ contract Trading {
 			Position storage position = positions[positionId];
 			Product memory product = products[position.productId];
 
-			uint256 price = getLatestPrice(product.feed);
+			uint256 price = getLatestPrice(position.productId);
 
 			// Add fee
 			uint256 priceWithFee = _calculatePriceWithFee(price, product.fee, position.isLong);
@@ -433,16 +438,18 @@ contract Trading {
 
 	// Getters
 
-	function getLatestPrice(address feed) public pure returns (uint256) {
+	function getLatestPrice(uint16 productId) public view returns (uint256) {
+		Product memory product = products[productId];
+		require(product.feed != address(0), "!PE");
 		/*
-		uint8 decimals = AggregatorV3Interface(feed).decimals();
+		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 		// standardize price to 8 decimals
 		(
 			, 
 			int price,
 			,
 			,
-		) = AggregatorV3Interface(feed).latestRoundData();
+		) = AggregatorV3Interface(product.feed).latestRoundData();
 		if (decimals != 8) {
 			price = price * (10**8) / (10**decimals);
 		}
