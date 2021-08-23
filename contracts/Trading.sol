@@ -15,13 +15,11 @@ contract Trading {
 
 	/*
 	TODO
-	- user locking, closing/releasing of positions by owner, readjusting position price (not beyond margin)
-	- unstake = redeem
-	- support for fee redemption when user has CAP staked, % set by owner (can be 0)
-	- support for referral rewards with % based on how much CAP you have staked (a percent even if you dont, e.g. 10%, then goes up to 25% with staking) [can be done offline, have temporary marketing programs to cover this]
-	- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed
-	- pause all trading, for example when going to a v2 contract
-	- should be it, the simpler the better and more flexible you remain
+	-- user locking, closing/releasing of positions by owner
+	-- unstake = redeem
+	-- support for fee rebates when user has CAP staked, % set by owner (can be 0)
+	- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed. This can be done on closePosition, if last vault sample > 24 hours, set vault sampled balance (checkpoint) 
+	- pause all trading, or new positions, for example when going to a v2 contract (can't pause releaseMargin)
 	- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
 	- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
 	- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
@@ -68,7 +66,7 @@ contract Trading {
 	uint256 public currentPositionId;
 	uint256 public liquidatorBounty = 5; // 5 = 5%
 	uint256 public stakingPeriod = 2592000; // 30 days
-	uint256 public unstakingPeriod = 28800; // 8 hours
+	uint256 public redemptionPeriod = 28800; // 8 hours
 	uint256 public settlementTime = 3 * 60;
 	uint256 public feeRebates = FeeRebates({minStaked: 0, minReward: 0, maxStaked: 0, maxReward: 0});
 	address public stakingContractAddress;
@@ -85,6 +83,8 @@ contract Trading {
 	mapping(address => mapping(uint8 => uint256)) private userStaked; // address => baseId => staked by user
 
 	mapping(uint8 => uint256) private maxOpenInterest; // risk limit, should be 1x-2x vault cap
+	mapping(address => bool) private lockedUsers;
+
 
 	// Constructor
 
@@ -105,18 +105,18 @@ contract Trading {
 		emit Staked(msg.sender, baseId, amount);
 	}
 
-	function unstake(uint8 baseId, uint256 _stake) external {
+	function redeem(uint8 baseId, uint256 _stake) external {
 		// !!! Local test, uncomment in prod
-		//require(block.timestamp % stakingPeriod < unstakingPeriod, "!P");
+		//require(block.timestamp % stakingPeriod < redemptionPeriod, "!P");
 		require(_stake <= userStaked[msg.sender][baseId], "!S");
 		uint256 amountToSend = _stake * balances[baseId] / totalStaked[baseId];
-		console.log('>params Unstake', userStaked[msg.sender][baseId], totalStaked[baseId], balances[baseId]);
-		console.log('>amountToSend Unstake', amountToSend);
+		console.log('>params redemption', userStaked[msg.sender][baseId], totalStaked[baseId], balances[baseId]);
+		console.log('>amountToSend Redemptione', amountToSend);
 		userStaked[msg.sender][baseId] -= _stake;
 		totalStaked[baseId] -= _stake;
 		balances[baseId] -= amountToSend;
 		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSend);
-		emit Unstaked(msg.sender, baseId, amountToSend);
+		emit Redeemed(msg.sender, baseId, amountToSend);
 	}
 
 	// Trading methods
@@ -130,6 +130,8 @@ contract Trading {
 		uint256 leverage,
 		bool releaseMargin
 	) external {
+
+		require(!lockedUsers[msg.sender], '!LCK');
 
 		// TODO: these are not needed for add margin, just for close
 
@@ -154,15 +156,18 @@ contract Trading {
 
 			Position memory position = positions[existingPositionId];
 
-			if (position.isLong == isLong) {
-				address base = bases[position.baseId];
-				require(base != address(0), '!BM');
-				IERC20(base).safeTransferFrom(msg.sender, address(this), margin);
-				_addMargin(existingPositionId, margin);
+			// Check owner
+			if (msg.sender == position.owner || lockedUsers[position.owner] && msg.sender == owner) { // owner can close positions / release margin of locked users (vault protection)
 
-			} else {
-				_closePosition(existingPositionId, margin, priceWithFee, product.interest, releaseMargin);
+				if (position.isLong == isLong) {
+					address base = bases[position.baseId];
+					require(base != address(0), '!BM');
+					IERC20(base).safeTransferFrom(msg.sender, address(this), margin);
+					_addMargin(existingPositionId, margin);
 
+				} else {
+					_closePosition(existingPositionId, margin, priceWithFee, product.interest, releaseMargin);
+				}
 			}
 
 		} else {
@@ -250,7 +255,7 @@ contract Trading {
 		position.leverage = newLeverage;
 		position.liquidationPrice = newLiquidationPrice;
 
-		emit AddMargin(existingPositionId, msg.sender, margin, newMargin, newLeverage, newLiquidationPrice);
+		emit AddMargin(existingPositionId, position.owner, margin, newMargin, newLeverage, newLiquidationPrice);
 
 	}
 
@@ -303,7 +308,7 @@ contract Trading {
 			// if full close
 			console.log('full close');
 			delete positions[existingPositionId];
-			userPositionIds[msg.sender][baseId].remove(existingPositionId);
+			userPositionIds[position.owner][baseId].remove(existingPositionId);
 		}
 
 		// update vault
@@ -328,9 +333,9 @@ contract Trading {
 		console.log('amountToSendUser', amountToSendUser);
 
 		// send margin unlocked +/- pnl to user
-		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSendUser);
+		IERC20(bases[baseId]).safeTransfer(position.owner, amountToSendUser);
 
-		emit ClosePosition(existingPositionId, msg.sender, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, feeRebate, false);
+		emit ClosePosition(existingPositionId, position.owner, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, feeRebate, false);
 
 	}
 
@@ -604,9 +609,9 @@ contract Trading {
 		emit StakingPeriodUpdated(period);
 	}
 
-	function setUnstakingPeriod(uint256 period) external onlyOwner {
-		unstakingPeriod = period;
-		emit UnstakingPeriodUpdated(period);
+	function setRedemptionPeriod(uint256 period) external onlyOwner {
+		redemptionPeriod = period;
+		emit RedemptionPeriodUpdated(period);
 	}
 
 	function setSettlementTime(uint256 time) external onlyOwner {
@@ -622,6 +627,11 @@ contract Trading {
 	function setStakingContractAddress(address _address) external onlyOwner {
 		stakingContractAddress = _address;
 		emit StakingContractAddressUpdated(_address);
+	}
+
+	function lockUser(address _address, bool _lock) external onlyOwner {
+		lockedUsers[_address] = _lock;
+		emit LockedUsersUpdated(_address, _lock);
 	}
 
 	function updateFeeRebates(uint256 _minStaked, uint16 _minReward, uint256 _maxStaked, uint16 _maxReward) external onlyOwner {
@@ -645,7 +655,7 @@ contract Trading {
 	event BaseRemoved(uint8 baseId);
 	event VaultCapUpdated(uint8 baseId, uint256 newCap);
 	event StakingPeriodUpdated(uint256 period);
-	event UnstakingPeriodUpdated(uint256 period);
+	event RedemptionPeriodUpdated(uint256 period);
 	event SettlementTimeUpdated(uint256 time);
 	event LiquidatorBountyUpdated(uint256 newShare);
 	event FeeRebatesUpdated(uint256 minStaked, uint16 minReward, uint256 maxStaked, uint16 maxReward);
@@ -653,7 +663,7 @@ contract Trading {
 	event OwnerUpdated(address newOwner);
 
 	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
-	event Unstaked(address indexed to, uint8 indexed baseId, uint256 amount);
+	event Redeemed(address indexed to, uint8 indexed baseId, uint256 amount);
 
 	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
