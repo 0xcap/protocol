@@ -227,7 +227,7 @@ contract Trading {
 
 		currentOpenInterest[baseId] += margin * leverage / 1000000;
 
-		require(currentOpenInterest[baseId] <= maxOpenInterest[baseId], '!O');
+		require(currentOpenInterest[baseId] <= maxOpenInterest[baseId], '!OI');
 
 		emit NewPosition(
 			currentPositionId,
@@ -582,6 +582,10 @@ contract Trading {
 			_positions[i] = positions[id];
 		}
 		return _positions;
+	}
+
+	function getCurrentOpenInterest(uint8 baseId) external view returns(uint256) {
+		return currentOpenInterest[baseId];
 	}
 
 	// Owner methods
