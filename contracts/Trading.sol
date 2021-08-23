@@ -9,8 +9,24 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import './libraries/UIntSet.sol';
+import './interfaces/IStaking.sol';
 
 contract Trading {
+
+	/*
+	TODO
+	- user locking, closing/releasing of positions by owner, readjusting position price (not beyond margin)
+	- unstake = redeem
+	- support for fee redemption when user has CAP staked, % set by owner (can be 0)
+	- support for referral rewards with % based on how much CAP you have staked (a percent even if you dont, e.g. 10%, then goes up to 25% with staking) [can be done offline, have temporary marketing programs to cover this]
+	- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed
+	- pause all trading, for example when going to a v2 contract
+	- should be it, the simpler the better and more flexible you remain
+	- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
+	- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
+	- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
+	- add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
+	*/
 
 	using SafeERC20 for IERC20;
 	using UintSet for UintSet.Set;
@@ -39,6 +55,13 @@ contract Trading {
 		bool isActive;
 	}
 
+	struct FeeRebates {
+		uint256 minStaked; // CAP staked
+		uint256 maxStaked; // CAP staked
+		uint16 minReward; // in bps. 100 = 1%
+		uint16 maxReward; // in bps. 100 = 1%
+	}
+
 	// Variables
 
 	address public owner;
@@ -47,6 +70,8 @@ contract Trading {
 	uint256 public stakingPeriod = 2592000; // 30 days
 	uint256 public unstakingPeriod = 28800; // 8 hours
 	uint256 public settlementTime = 3 * 60;
+	uint256 public feeRebates = FeeRebates({minStaked: 0, minReward: 0, maxStaked: 0, maxReward: 0});
+	address public stakingContractAddress;
 
 	mapping(uint8 => address) private bases; // baseId => DAI address
 	mapping(uint16 => Product) private products; // productId => Product
@@ -264,6 +289,13 @@ contract Trading {
 		// subtract interest from P/L
 		pnl -= int256(_calculateInterest(margin * position.leverage, position.timestamp, interest));
 
+		// calculate fee rebate (kickback)
+		uint256 feeRebate;
+		if (feeRebates.maxReward > 0) {
+			feeRebate = _calculateFeeRebate(position.owner, margin * position.leverage, position.productId);
+			pnl += int256(feeRebate);
+		}
+
 		if (margin < position.margin) {
 			// if partial close
 			position.margin -= margin;
@@ -298,7 +330,7 @@ contract Trading {
 		// send margin unlocked +/- pnl to user
 		IERC20(bases[baseId]).safeTransfer(msg.sender, amountToSendUser);
 
-		emit ClosePosition(existingPositionId, msg.sender, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, false);
+		emit ClosePosition(existingPositionId, msg.sender, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, feeRebate, false);
 
 	}
 
@@ -336,7 +368,7 @@ contract Trading {
 			
 			console.log('rewards', vaultReward, liquidatorReward);
 
-			emit ClosePosition(positionId, position.owner, position.baseId, position.productId, priceWithFee, position.margin, position.leverage, -1 * int256(position.margin), true);
+			emit ClosePosition(positionId, position.owner, position.baseId, position.productId, priceWithFee, position.margin, position.leverage, -1 * int256(position.margin), 0, true);
 
 			delete positions[positionId];
 
@@ -432,6 +464,25 @@ contract Trading {
 	function _calculateInterest(uint256 amount, uint64 timestamp, uint256 interest) internal view returns (uint256) {
 		if (block.timestamp < uint256(timestamp) - 1800) return 0;
 		return amount * (interest / 10000) * (block.timestamp - uint256(timestamp)) / 360 days;
+	}
+
+	function _calculateFeeRebate(address user, uint256 amount, uint16 productId) internal view returns (uint256) {
+		// get fee rebate scale. min = [min CAP staked, min reward], max = [max CAP staked, max reward]. linear regression in between. can be [0, 10%], [200, 50%], means reward will be 10% back even with no CAP staked, up to 50%
+		// get CAP staked by user
+		// return amount * fee * rebate %
+		if (stakingContractAddress == address(0)) return 0;
+		if (feeRebates.maxReward == 0) return 0;
+		uint256 stakedCAP = IStaking(stakingContractAddress).getUserStake(user);
+		uint256 rebateBps;
+		if (stakedCAP >= feeRebates.maxStaked) {
+			rebateBps = feeRebates.maxReward;
+		} else if (stakedCAP <= feeRebates.minStaked) {
+			rebateBps = feeRebates.minReward;
+		} else {
+			rebateBps = (feeRebates.maxReward - feeRebates.minReward) * (stakedCAP - feeRebates.minStaked) * 10000 / (feeRebates.maxStaked - feeRebates.minStaked);
+		}
+		Product memory product = products[productId];
+		return amount * product.fee * rebateBps / 10000;
 	}
 
 	// Getters
@@ -568,6 +619,18 @@ contract Trading {
 		emit VaultCapUpdated(baseId, newCap);
 	}
 
+	function setStakingContractAddress(address _address) external onlyOwner {
+		stakingContractAddress = _address;
+		emit StakingContractAddressUpdated(_address);
+	}
+
+	function updateFeeRebates(uint256 _minStaked, uint16 _minReward, uint256 _maxStaked, uint16 _maxReward) external onlyOwner {
+		require(_maxStaked >= _minStaked, '!M1');
+		require(_maxReward >= _minReward, '!M2');
+		feeRebates = FeeRebates({minStaked: _minStaked, minReward: _minReward, maxStaked: _maxStaked, maxReward: _maxReward});
+		emit FeeRebatesUpdated(_minStaked, _minReward, _maxStaked, _maxReward);
+	}
+
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;
 		emit OwnerUpdated(newOwner);
@@ -585,6 +648,8 @@ contract Trading {
 	event UnstakingPeriodUpdated(uint256 period);
 	event SettlementTimeUpdated(uint256 time);
 	event LiquidatorBountyUpdated(uint256 newShare);
+	event FeeRebatesUpdated(uint256 minStaked, uint16 minReward, uint256 maxStaked, uint16 maxReward);
+	event StakingContractAddressUpdated(address _address);
 	event OwnerUpdated(address newOwner);
 
 	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
@@ -592,7 +657,7 @@ contract Trading {
 
 	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
-	event ClosePosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, uint256 priceWithFee, uint256 margin, uint256 leverage, int256 pnl, bool wasLiquidated);
+	event ClosePosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, uint256 priceWithFee, uint256 margin, uint256 leverage, int256 pnl, uint256 feeRebate, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
 
