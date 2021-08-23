@@ -18,12 +18,13 @@ contract Trading {
 	-- user locking, closing/releasing of positions by owner
 	-- unstake = redeem
 	-- support for fee rebates when user has CAP staked, % set by owner (can be 0)
-	- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed. This can be done on closePosition, if last vault sample > 24 hours, set vault sampled balance (checkpoint) 
-	- pause all trading, or new positions, for example when going to a v2 contract (can't pause releaseMargin)
-	- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
-	- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
-	- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
-	- add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
+	-- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed. This can be done on closePosition, if last vault sample > 24 hours, set vault sampled balance (checkpoint) 
+	-- pause all trading, or new positions, for example when going to a v2 contract (can't pause releaseMargin)
+	-- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
+	-- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
+	-- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
+	- later, v2: add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
+	- DRY
 	*/
 
 	using SafeERC20 for IERC20;
@@ -65,10 +66,11 @@ contract Trading {
 	address public owner;
 	uint256 public currentPositionId;
 	uint256 public liquidatorBounty = 5; // 5 = 5%
-	uint256 public stakingPeriod = 2592000; // 30 days
-	uint256 public redemptionPeriod = 28800; // 8 hours
-	uint256 public settlementTime = 3 * 60;
-	uint256 public feeRebates = FeeRebates({minStaked: 0, minReward: 0, maxStaked: 0, maxReward: 0});
+	uint256 public stakingPeriod = 30 days; // 30 days
+	uint256 public redemptionPeriod = 8 hours; // 8 hours
+	uint256 public settlementTime = 3 minutes;
+	uint256 public minTradeDuration = 10 minutes;
+	FeeRebates public feeRebates = FeeRebates({minStaked: 0, minReward: 0, maxStaked: 0, maxReward: 0});
 	address public stakingContractAddress;
 
 	mapping(uint8 => address) private bases; // baseId => DAI address
@@ -82,9 +84,14 @@ contract Trading {
 	mapping(uint8 => uint256) private totalStaked; // baseId => vault total staked by users
 	mapping(address => mapping(uint8 => uint256)) private userStaked; // address => baseId => staked by user
 
+	mapping(uint8 => uint256) private currentOpenInterest;
 	mapping(uint8 => uint256) private maxOpenInterest; // risk limit, should be 1x-2x vault cap
 	mapping(address => bool) private lockedUsers;
-
+	mapping(uint8 => uint256) private balanceCheckpoints; // baseId => last vault balance checkpoint, used as reference for max daily drawdown
+	mapping(uint8 => uint256) private vaultCheckpointTime; // baseId => last vault balance checkpoint timestamp, should be > 24 hours to set new checkpoint
+	mapping (uint8 => uint256) private maxDailyDrawdown; // baseId => vault, in bps, 1000 = 10%
+	mapping (uint8 => bool) private isPaused; // baseId => isPaused
+	mapping (uint8 => uint256) private protocolFee; // baseId => fee, in bps of trade volume, 100 = 1%
 
 	// Constructor
 
@@ -131,6 +138,7 @@ contract Trading {
 		bool releaseMargin
 	) external {
 
+		require(!isPaused[baseId]);
 		require(!lockedUsers[msg.sender], '!LCK');
 
 		// TODO: these are not needed for add margin, just for close
@@ -217,6 +225,10 @@ contract Trading {
 		userPositionIds[user][baseId].add(currentPositionId);
 		settlingIds.add(currentPositionId);
 
+		currentOpenInterest[baseId] += margin * leverage / 1000000;
+
+		require(currentOpenInterest[baseId] <= maxOpenInterest[baseId], '!O');
+
 		emit NewPosition(
 			currentPositionId,
 			user,
@@ -272,7 +284,7 @@ contract Trading {
 		Position storage position = positions[existingPositionId];
 
 		require(!position.isSettling, "!S");
-
+		require(block.timestamp > position.timestamp + minTradeDuration, '!D');
 		require(margin <= position.margin, "!PM");
 
 		uint8 baseId = position.baseId;
@@ -292,13 +304,21 @@ contract Trading {
 		
 		// realize interest pro rata based on amount being closed
 		// subtract interest from P/L
-		pnl -= int256(_calculateInterest(margin * position.leverage, position.timestamp, interest));
+		pnl -= int256(_calculateInterest(margin * position.leverage / 1000000, position.timestamp, interest));
 
 		// calculate fee rebate (kickback)
 		uint256 feeRebate;
 		if (feeRebates.maxReward > 0) {
 			feeRebate = _calculateFeeRebate(position.owner, margin * position.leverage, position.productId);
 			pnl += int256(feeRebate);
+		}
+
+		// calculate protocol fee
+		uint256 protocolFeeAmount;
+		if (protocolFee[baseId] > 0) {
+			protocolFeeAmount = protocolFee[baseId] * margin * position.leverage / 1000000 / 10000;
+			pnl -= int256(protocolFeeAmount);
+			IERC20(bases[baseId]).safeTransfer(owner, protocolFeeAmount);
 		}
 
 		if (margin < position.margin) {
@@ -311,15 +331,23 @@ contract Trading {
 			userPositionIds[position.owner][baseId].remove(existingPositionId);
 		}
 
+		// Checkpoint vault
+		if (vaultCheckpointTime[baseId] < block.timestamp - 24 hours) {
+			vaultCheckpointTime[baseId] = block.timestamp;
+			balanceCheckpoints[baseId] = balances[baseId];
+		}
+
 		// update vault
 		uint256 positivePnl;
 		uint256 amountToSendUser;
 		if (pnl < 0) {
 			positivePnl = uint256(-pnl);
 			console.log('pnl-', positivePnl);
-			balances[baseId] += positivePnl;
 			if (positivePnl < margin) {
 				amountToSendUser = margin - positivePnl;
+				balances[baseId] += positivePnl;
+			} else {
+				balances[baseId] += margin;
 			}
 		} else {
 			if (releaseMargin) pnl = 0; // in cases to unlock margin when there's not enough in the vault, user can always get back their margin
@@ -332,10 +360,15 @@ contract Trading {
 
 		console.log('amountToSendUser', amountToSendUser);
 
+		// Require vault not below drawdown
+		require(balances[baseId] >= balanceCheckpoints[baseId] * (10000 - maxDailyDrawdown[baseId]) / 10000, '!MD');
+
 		// send margin unlocked +/- pnl to user
 		IERC20(bases[baseId]).safeTransfer(position.owner, amountToSendUser);
 
-		emit ClosePosition(existingPositionId, position.owner, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, feeRebate, false);
+		currentOpenInterest[baseId] -= margin * position.leverage / 1000000;
+
+		emit ClosePosition(existingPositionId, position.owner, baseId, position.productId, priceWithFee, margin, position.leverage, pnl, feeRebate, protocolFeeAmount, false);
 
 	}
 
@@ -373,7 +406,7 @@ contract Trading {
 			
 			console.log('rewards', vaultReward, liquidatorReward);
 
-			emit ClosePosition(positionId, position.owner, position.baseId, position.productId, priceWithFee, position.margin, position.leverage, -1 * int256(position.margin), 0, true);
+			emit ClosePosition(positionId, position.owner, position.baseId, position.productId, priceWithFee, position.margin, position.leverage, -1 * int256(position.margin), 0, 0, true);
 
 			delete positions[positionId];
 
@@ -634,6 +667,33 @@ contract Trading {
 		emit LockedUsersUpdated(_address, _lock);
 	}
 
+	function setMaxDailyDrawdown(uint8 baseId, uint256 drawdown) external onlyOwner {
+		require(drawdown < 10000, '!E');
+		maxDailyDrawdown[baseId] = drawdown;
+		emit MaxDailyDrawdownUpdated(baseId, drawdown);
+	}
+
+	function setMaxOpenInterest(uint8 baseId, uint256 interest) external onlyOwner {
+		maxOpenInterest[baseId] = interest;
+		emit MaxOpenInterestUpdated(baseId, interest);
+	}
+
+	function setMinTradeDuration(uint256 duration) external onlyOwner {
+		minTradeDuration = duration;
+		emit MinTradeDurationUpdated(duration);
+	}
+
+	function pauseVault(uint8 baseId, bool _isPaused) external onlyOwner {
+		isPaused[baseId] = _isPaused;
+		emit VaultPauseUpdated(baseId, _isPaused);
+	}
+
+	function setProtocolFee(uint8 baseId, uint256 amount) external onlyOwner {
+		require(amount <= 200, '!A'); // 2%
+		protocolFee[baseId] = amount;
+		emit ProtocolFeeUpdated(baseId, amount);
+	}
+
 	function updateFeeRebates(uint256 _minStaked, uint16 _minReward, uint256 _maxStaked, uint16 _maxReward) external onlyOwner {
 		require(_maxStaked >= _minStaked, '!M1');
 		require(_maxReward >= _minReward, '!M2');
@@ -660,6 +720,12 @@ contract Trading {
 	event LiquidatorBountyUpdated(uint256 newShare);
 	event FeeRebatesUpdated(uint256 minStaked, uint16 minReward, uint256 maxStaked, uint16 maxReward);
 	event StakingContractAddressUpdated(address _address);
+	event MaxDailyDrawdownUpdated(uint8 baseId, uint256 drawdown);
+	event MaxOpenInterestUpdated(uint8 baseId, uint256 interest);
+	event MinTradeDurationUpdated(uint256 duration);
+	event VaultPauseUpdated(uint8 baseId, bool _isPaused);
+	event LockedUsersUpdated(address _address, bool _lock);
+	event ProtocolFeeUpdated(uint8 baseId, uint256 amount);
 	event OwnerUpdated(address newOwner);
 
 	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
@@ -667,7 +733,7 @@ contract Trading {
 
 	event NewPosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, bool isLong, uint256 priceWithFee, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage, uint256 newLiquidationPrice);
-	event ClosePosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, uint256 priceWithFee, uint256 margin, uint256 leverage, int256 pnl, uint256 feeRebate, bool wasLiquidated);
+	event ClosePosition(uint256 id, address indexed user, uint8 indexed baseId, uint16 indexed productId, uint256 priceWithFee, uint256 margin, uint256 leverage, int256 pnl, uint256 feeRebate, uint256 protocolFee, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
 
