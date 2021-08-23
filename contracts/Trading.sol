@@ -338,24 +338,21 @@ contract Trading {
 		}
 
 		// update vault
-		uint256 positivePnl;
 		uint256 amountToSendUser;
 		if (pnl < 0) {
-			positivePnl = uint256(-pnl);
-			console.log('pnl-', positivePnl);
-			if (positivePnl < margin) {
-				amountToSendUser = margin - positivePnl;
-				balances[baseId] += positivePnl;
+			console.log('pnl-', uint256(-pnl));
+			if (uint256(-pnl) < margin) {
+				amountToSendUser = margin - uint256(-pnl);
+				balances[baseId] += uint256(-pnl);
 			} else {
 				balances[baseId] += margin;
 			}
 		} else {
 			if (releaseMargin) pnl = 0; // in cases to unlock margin when there's not enough in the vault, user can always get back their margin
-			positivePnl = uint256(pnl);
-			console.log('pnl', positivePnl);
-			require(balances[baseId] >= positivePnl, "!IF");
-			balances[baseId] -= positivePnl;
-			amountToSendUser = margin + positivePnl;
+			console.log('pnl', uint256(pnl));
+			require(balances[baseId] >= uint256(pnl), "!IF");
+			balances[baseId] -= uint256(pnl);
+			amountToSendUser = margin + uint256(pnl);
 		}
 
 		console.log('amountToSendUser', amountToSendUser);
