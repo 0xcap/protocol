@@ -48,22 +48,19 @@ async function main() {
   await trading.deployed();
   console.log("Cap Trading deployed to:", trading.address);
 
-  await trading.addBase(1, base);
-  console.log('Added base USDC');
+  await trading.addVault(1, base, 100000 * 10**6, 200000 * 10**6, 10 * 100, 30 * 24 * 3600, 8 * 3600, 0);
+  console.log('Added vault USDC');
 
-  await trading.addProduct(1, 50 * 10**6, 50, 500, "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"); // chainlink feed
+  await trading.addProduct(1, 50 * 10**6, 50, 500, "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", 3 * 60, 15 * 60, 80 * 100, 5 * 100); // chainlink feed
   console.log('Added product BTC/USD');
 
-  await trading.addProduct(2, 50 * 10**6, 50, 500, "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"); // chainlink feed
+  await trading.addProduct(2, 25 * 10**6, 50, 800, "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419", 3 * 60, 15 * 60, 80 * 100, 5 * 100); // chainlink feed
   console.log('Added product ETH/USD');
-
-  await trading.setCap(1, 100000 * 10**6); // 100K USDC
-  console.log('Set vault cap', 100000);
 
   //const randomWallet = await hre.ethers.Wallet.createRandom();
   //console.log('Created random wallet', randomWallet);
 
-  await usdc.mint(account, 10000000 * 10**6);
+  await usdc.mint(account, 100000 * 10**6);
   console.log('Minted USDC to', account, (await usdc.balanceOf(account)).toNumber());
 
   //await usdc.approve(trading.address, 10000000 * 10**6);

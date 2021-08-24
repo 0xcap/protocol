@@ -530,6 +530,10 @@ contract Trading {
 		return _positions;
 	}
 
+	function getUserStaked(address user, uint8 vaultId) external view returns (uint256) {
+		return vaultUserStaked[user][vaultId];
+	}
+
 	// Owner methods
 
 	function addVault(uint8 vaultId, address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee) external onlyOwner {
