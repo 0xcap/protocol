@@ -89,7 +89,7 @@ contract Trading {
 	mapping(uint8 => Vault) private vaults; // vaultId => vault info
 	mapping(uint16 => Product) private products; // productId => product info
 	mapping(uint256 => Position) private positions; // positionId => position info
-	mapping(address => mapping(uint8 => UintSet.Set)) private userPositionIds; // user => baseId => [Position ids]
+	mapping(address => mapping(uint8 => UintSet.Set)) private userPositionIds; // user => vaultId => [Position ids]
 	UintSet.Set private settlingIds; // IDs of positions in settlement
 	mapping(address => mapping(uint8 => uint256)) vaultUserStaked;
 	mapping(address => bool) private lockedUsers;
@@ -661,8 +661,8 @@ contract Trading {
 
 	// Events
 
-	event Staked(address indexed from, uint8 indexed baseId, uint256 amount);
-	event Redeemed(address indexed to, uint8 indexed baseId, uint256 amount);
+	event Staked(address indexed from, uint8 indexed vaultId, uint256 amount);
+	event Redeemed(address indexed to, uint8 indexed vaultId, uint256 amount);
 
 	event NewPosition(uint256 id, address indexed user, uint8 indexed vaultId, uint16 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);

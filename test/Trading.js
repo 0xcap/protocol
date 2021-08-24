@@ -3,14 +3,24 @@ const { expect } = require("chai");
 
 const { parseUnits, formatUnits } = require('./utils.js');
 
-const BASES = [
+const VAULTS = [
 	{
 		id: 1,
-		label: 'USDC'
+		label: 'USDC1',
+		cap: parseUnits(100000),
+		maxOpenInterest: parseUnits(500000),
+		maxDailyDrawdown: 10 * 100, // 10%
+		stakingPeriod: 30 * 24 * 3600,
+		redemptionPeriod: 8 * 3600
 	},
 	{
 		id: 2,
-		label: 'USDC2'
+		label: 'USDC2',
+		cap: parseUnits(200000),
+		maxOpenInterest: parseUnits(2500000),
+		maxDailyDrawdown: 15 * 100, // 10%
+		stakingPeriod: 30 * 24 * 3600,
+		redemptionPeriod: 8 * 3600
 	}
 ];
 
@@ -18,28 +28,32 @@ const PRODUCTS = [
 	{
 		id: 1,
 		label: 'BTC-USD',
-		leverage: 50,
-		fee: 50, // 0.5%
-		interest: 500, // 5%
-		feed: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c" // chainlink
+		leverage: parseUnits(50),
+		fee: 0.5 * 100, // 0.5%
+		interest: 5 * 100, // 5%
+		feed: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", // chainlink
+		settlementTime: 3 * 60,
+		minTradeDuration: 15 * 60,
+		liquidationThreshold: 80 * 100, // 80%
+		liquidationBounty: 5 * 100
 	},
 	{
 		id: 2,
 		label: 'ETH-USD',
-		leverage: 25,
-		fee: 50,
-		interest: 800,
-		feed: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419"
+		leverage: parseUnits(25),
+		fee: 0.5 * 100,
+		interest: 8 * 100,
+		feed: "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419",
+		settlementTime: 3 * 60,
+		minTradeDuration: 15 * 60,
+		liquidationThreshold: 80 * 100, // 80%
+		liquidationBounty: 5 * 100
 	},
 ];
 
-const DATA = {
-	vault_cap: 100000,
-	vault_max_open_interest: 500000,
-	address_balance: 10000
-}
 
 let currentPositionId = 0;
+const starting_balance = parseUnits(10000);
 
 function _calculatePriceWithFee(price, isLong) {
 	if (isLong) {
@@ -51,7 +65,7 @@ function _calculatePriceWithFee(price, isLong) {
 
 describe("Trading", () => {
 
-	let Trading, TradingA1, TradingA2, Base = [], addrs = [], owner;
+	let Trading, Bases = [], addrs = [], owner;
 
 	before(async () => {
 
@@ -63,26 +77,25 @@ describe("Trading", () => {
 		Trading = await TradingContract.deploy();
 
 		const BaseTokenContract = await ethers.getContractFactory("USDCMock");
-		Base[1] = await BaseTokenContract.deploy();
-		Base[2] = await BaseTokenContract.deploy();
+		Bases[1] = await BaseTokenContract.deploy();
+		Bases[2] = await BaseTokenContract.deploy();
 
-		// add bases
-		for (const b of BASES) {
-			await Trading.addBase(b.id, Base[b.id].address);
-			await Trading.setCap(b.id, parseUnits(DATA.vault_cap));
-			await Trading.setMaxOpenInterest(b.id, parseUnits(DATA.vault_max_open_interest));
+		// add vaults
+		for (const v of VAULTS) {
+
+			await Trading.addVault(v.id, Bases[v.id].address, v.cap, v.maxOpenInterest, v.maxDailyDrawdown, v.stakingPeriod, v.redemptionPeriod, 0);
+
 			// mint & approve bases
 			for (const addr of addrs) {
-				Base[b.id].mint(addr.address, parseUnits(DATA.address_balance));
-				Base[b.id].connect(addr).approve(Trading.address, parseUnits(DATA.address_balance));
+				Bases[v.id].mint(addr.address, starting_balance);
+				Bases[v.id].connect(addr).approve(Trading.address, starting_balance);
 			}
-			// set max open interest
 
 		}
 
 		// add products
 		for (const p of PRODUCTS) {
-			await Trading.addProduct(p.id, parseUnits(p.leverage), p.fee, p.interest, p.feed);
+			await Trading.addProduct(p.id, p.leverage, p.fee, p.interest, p.feed, p.settlementTime, p.minTradeDuration, p.liquidationThreshold, p.liquidationBounty);
 		}
 
 	});
@@ -92,10 +105,10 @@ describe("Trading", () => {
 	});
 
 	it("Base balances should be set", async () => {
-		for (const b of BASES) {
+		for (const v of VAULTS) {
 			for (const addr of addrs) {
-				const balance = formatUnits(await Base[b.id].balanceOf(addr.address));
-				expect(balance).to.equal(DATA.address_balance);
+				const balance = await Bases[v.id].balanceOf(addr.address);
+				expect(balance).to.equal(starting_balance);
 			}
 		}
 	});
@@ -123,41 +136,41 @@ describe("Trading", () => {
 			let userPositionIndexes = {1: 0, 2: 0};
 
 			[
-				{baseId: 1, productId: 1, isLong: true, margin: parseUnits(100), leverage: parseUnits(50), userId: 1},
-				{baseId: 1, productId: 2, isLong: false, margin: parseUnits(200), leverage: parseUnits(25), userId: 2},
-				{baseId: 1, productId: 1, isLong: true, margin: parseUnits(1200), leverage: parseUnits(12), userId: 2},
-				{baseId: 1, productId: 2, isLong: false, margin: parseUnits(111), leverage: parseUnits(22), userId: 1}
+				{vaultId: 1, productId: 1, isLong: true, margin: parseUnits(100), leverage: parseUnits(50), userId: 1},
+				{vaultId: 1, productId: 2, isLong: false, margin: parseUnits(200), leverage: parseUnits(25), userId: 2},
+				{vaultId: 1, productId: 1, isLong: true, margin: parseUnits(1200), leverage: parseUnits(12), userId: 2},
+				{vaultId: 1, productId: 2, isLong: false, margin: parseUnits(111), leverage: parseUnits(22), userId: 1}
 			].forEach((p) => {
 
-				const { baseId, productId, isLong, margin, leverage, userId } = p;
+				const { vaultId, productId, isLong, margin, leverage, userId } = p;
 
-				it(`opens ${isLong ? 'long' : 'short'} on ${baseId}:${productId}`, async () => {
+				it(`opens ${isLong ? 'long' : 'short'} on ${vaultId}:${productId}`, async () => {
 
 					const user = addrs[userId].address;
 
-					const balance_user = await Base[baseId].balanceOf(user) * 1;
-					const balance_contract = await Base[baseId].balanceOf(Trading.address) * 1;
+					const balance_user = await Bases[vaultId].balanceOf(user) * 1;
+					const balance_contract = await Bases[vaultId].balanceOf(Trading.address) * 1;
 
-					const tx = Trading.connect(addrs[userId]).submitOrder(baseId, productId, isLong, 0, margin, leverage, false);
+					const tx = Trading.connect(addrs[userId]).submitOrder(vaultId, productId, isLong, margin, leverage, 0, false);
 
 					const priceWithFee = _calculatePriceWithFee(await Trading.getLatestPrice(productId), isLong);
 
 					currentPositionId++;
 
 					// Check event
-					expect(await tx).to.emit(Trading, "NewPosition").withArgs(currentPositionId, user, baseId, productId, isLong, priceWithFee, margin, leverage);
+					expect(await tx).to.emit(Trading, "NewPosition").withArgs(currentPositionId, user, vaultId, productId, isLong, priceWithFee, margin, leverage);
 
 					// Check balances
-					expect(await Base[baseId].balanceOf(user)).to.equal(balance_user - margin);
-					expect(await Base[baseId].balanceOf(Trading.address)).to.equal(balance_contract + margin);
+					expect(await Bases[vaultId].balanceOf(user)).to.equal(balance_user - margin);
+					expect(await Bases[vaultId].balanceOf(Trading.address)).to.equal(balance_contract + margin);
 
 					// Check user positions
-					const user_positions = await Trading.getUserPositions(user, baseId);
+					const user_positions = await Trading.getUserPositions(user, vaultId);
 					const position = user_positions[userPositionIndexes[userId]];
 					userPositionIndexes[userId]++;
 
 					expect(position.id).to.equal(currentPositionId);
-					expect(position.baseId).to.equal(baseId);
+					expect(position.vaultId).to.equal(vaultId);
 					expect(position.productId).to.equal(productId);
 					expect(position.owner).to.equal(user);
 					expect(position.isLong).to.equal(isLong);
@@ -165,21 +178,13 @@ describe("Trading", () => {
 					expect(position.leverage).to.equal(leverage);
 					expect(position.price).to.equal(priceWithFee);
 
-					console.log('position', position.liquidationPrice.toNumber());
-
-					let liquidationPrice;
-					if (isLong) {
-						liquidationPrice = (priceWithFee - priceWithFee * 80 / 100 / leverage);
-					} else {
-						liquidationPrice = (priceWithFee + priceWithFee * 80 / 100 / leverage);
-					}
-
-					expect(position.liquidationPrice).to.equal(parseInt(liquidationPrice));
-
 					// Check open interest
+					// get vault for this
+					/*
 					amountSum += parseInt(position.margin * position.leverage / 10**6);
 					const oi = await Trading.getCurrentOpenInterest(baseId);
 					expect(oi).to.equal(amountSum);
+					*/
 
 				});
 			
@@ -190,8 +195,8 @@ describe("Trading", () => {
 			// pause base, lock user (as params)
 
 			it('fails to open position with leverage too high', async () => {
-				const tx = Trading.connect(addrs[1]).submitOrder(1, 1, true, 0, parseUnits(100), parseUnits(200), false);
-				await expect(tx).to.be.revertedWith('!L2')
+				const tx = Trading.connect(addrs[1]).submitOrder(1, 1, true, parseUnits(100), parseUnits(200), 0, false);
+				await expect(tx).to.be.revertedWith('!max-leverage')
 			});
 
 		});
