@@ -62,9 +62,6 @@ describe("Trading", () => {
 		const TradingContract = await ethers.getContractFactory("Trading");
 		Trading = await TradingContract.deploy();
 
-		TradingA1 = Trading.connect(addrs[1]);
-		TradingA2 = Trading.connect(addrs[2]);
-
 		const BaseTokenContract = await ethers.getContractFactory("USDCMock");
 		Base[1] = await BaseTokenContract.deploy();
 		Base[2] = await BaseTokenContract.deploy();
@@ -104,7 +101,7 @@ describe("Trading", () => {
 	});
 
 	it("Should fail setting owner from other address", async () => {
-		await expect(TradingA1.setOwner(addrs[1].address)).to.be.revertedWith('!O');
+		await expect(Trading.connect(addrs[1]).setOwner(addrs[1].address)).to.be.revertedWith('!O');
 	});
 
 	it("Should set owner", async () => {
@@ -120,12 +117,17 @@ describe("Trading", () => {
 
 		describe("openPosition", () => {
 
+			// Successes
+
 			let amountSum = 0;
-			
+			let userPositionIndexes = {1: 0, 2: 0};
+
 			[
 				{baseId: 1, productId: 1, isLong: true, margin: parseUnits(100), leverage: parseUnits(50), userId: 1},
-				{baseId: 1, productId: 2, isLong: false, margin: parseUnits(200), leverage: parseUnits(25), userId: 1},
-			].forEach((p, i) => {
+				{baseId: 1, productId: 2, isLong: false, margin: parseUnits(200), leverage: parseUnits(25), userId: 2},
+				{baseId: 1, productId: 1, isLong: true, margin: parseUnits(1200), leverage: parseUnits(12), userId: 2},
+				{baseId: 1, productId: 2, isLong: false, margin: parseUnits(111), leverage: parseUnits(22), userId: 1}
+			].forEach((p) => {
 
 				const { baseId, productId, isLong, margin, leverage, userId } = p;
 
@@ -135,15 +137,15 @@ describe("Trading", () => {
 
 					const balance_user = await Base[baseId].balanceOf(user) * 1;
 					const balance_contract = await Base[baseId].balanceOf(Trading.address) * 1;
-					
+
+					const tx = Trading.connect(addrs[userId]).submitOrder(baseId, productId, isLong, 0, margin, leverage, false);
+
 					const priceWithFee = _calculatePriceWithFee(await Trading.getLatestPrice(productId), isLong);
 
 					currentPositionId++;
 
-					const tx = await TradingA1.submitOrder(baseId, productId, isLong, 0, margin, leverage, false);
-
 					// Check event
-					expect(tx).to.emit(Trading, "NewPosition").withArgs(currentPositionId, user, baseId, productId, isLong, priceWithFee, margin, leverage);
+					expect(await tx).to.emit(Trading, "NewPosition").withArgs(currentPositionId, user, baseId, productId, isLong, priceWithFee, margin, leverage);
 
 					// Check balances
 					expect(await Base[baseId].balanceOf(user)).to.equal(balance_user - margin);
@@ -151,7 +153,8 @@ describe("Trading", () => {
 
 					// Check user positions
 					const user_positions = await Trading.getUserPositions(user, baseId);
-					const position = user_positions[i];
+					const position = user_positions[userPositionIndexes[userId]];
+					userPositionIndexes[userId]++;
 
 					expect(position.id).to.equal(currentPositionId);
 					expect(position.baseId).to.equal(baseId);
@@ -162,6 +165,8 @@ describe("Trading", () => {
 					expect(position.leverage).to.equal(leverage);
 					expect(position.price).to.equal(priceWithFee);
 
+					console.log('position', position.liquidationPrice.toNumber());
+
 					let liquidationPrice;
 					if (isLong) {
 						liquidationPrice = (priceWithFee - priceWithFee * 80 / 100 / leverage);
@@ -169,7 +174,7 @@ describe("Trading", () => {
 						liquidationPrice = (priceWithFee + priceWithFee * 80 / 100 / leverage);
 					}
 
-					expect(position.liquidationPrice).to.equal(liquidationPrice);
+					expect(position.liquidationPrice).to.equal(parseInt(liquidationPrice));
 
 					// Check open interest
 					amountSum += parseInt(position.margin * position.leverage / 10**6);
@@ -178,6 +183,15 @@ describe("Trading", () => {
 
 				});
 			
+			});
+
+			// Error scenarios
+			// leverage, margin, product inactive, nonexistent, base
+			// pause base, lock user (as params)
+
+			it('fails to open position with leverage too high', async () => {
+				const tx = Trading.connect(addrs[1]).submitOrder(1, 1, true, 0, parseUnits(100), parseUnits(200), false);
+				await expect(tx).to.be.revertedWith('!L2')
 			});
 
 		});
