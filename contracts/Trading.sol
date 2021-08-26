@@ -48,6 +48,10 @@ contract Trading {
 		uint256 totalStaked;
 		uint256 lastCheckpointBalance;
 		uint256 lastCheckpointTime;
+		uint256 frMinStaked; // CAP staked. 0 = min rebate without stake
+		uint256 frMaxStaked; // CAP staked. 0 = no fee rebates
+		uint16 frMinRebate; // in bps. 1000 = 10%
+		uint16 frMaxRebate; // in bps. 5000 = 50%
 		bool isActive;
 	}
 
@@ -80,13 +84,6 @@ contract Trading {
 	address public owner; // contract owner
 	uint256 public currentPositionId; // incremental
 	address public CAPStakingContract;
-
-
-	// Fee rebate scale
-	uint256 frMinStaked; // CAP staked. 0 = min rebate without stake
-	uint256 frMaxStaked; // CAP staked. 0 = no fee rebates
-	uint16 frMinRebate; // in bps. 1000 = 10%
-	uint16 frMaxRebate; // in bps. 5000 = 50%
 
 	// Mappings
 
@@ -292,8 +289,8 @@ contract Trading {
 			pnl -= int256(_calculateInterest(margin * position.leverage / 10**6, position.timestamp, interest));
 
 			// calculate fee rebate
-			if (frMaxRebate > 0) {
-				feeRebateAmount = _calculateFeeRebate(position.owner, margin * position.leverage / 10**6, position.productId);
+			if (vault.frMaxRebate > 0) {
+				feeRebateAmount = _calculateFeeRebate(position.owner, margin * position.leverage / 10**6, position.vaultId, position.productId);
 				pnl += int256(feeRebateAmount);
 			}
 
@@ -493,20 +490,21 @@ contract Trading {
 		}
 	}
 
-	function _calculateFeeRebate(address user, uint256 amount, uint16 productId) internal view returns (uint256) {
+	function _calculateFeeRebate(address user, uint256 amount, uint8 vaultId, uint16 productId) internal view returns (uint256) {
 		// get fee rebate scale. min = [min CAP staked, min reward], max = [max CAP staked, max reward]. linear regression in between. can be [0, 10%], [200, 50%], means reward will be 10% back even with no CAP staked, up to 50%
 		// get CAP staked by user
 		// return amount * fee * rebate %
-		if (frMaxRebate == 0) return 0;
+		Vault memory vault = vaults[vaultId];
+		if (vault.frMaxRebate == 0) return 0;
 		if (CAPStakingContract == address(0)) return 0;
 		uint256 stakedCAP = IStaking(CAPStakingContract).getUserStake(user);
 		uint256 rebateBps;
-		if (stakedCAP >= frMaxStaked) {
-			rebateBps = frMaxRebate;
-		} else if (stakedCAP <= frMinStaked) {
-			rebateBps = frMinRebate;
+		if (stakedCAP >= vault.frMaxStaked) {
+			rebateBps = uint256(vault.frMaxRebate);
+		} else if (stakedCAP <= vault.frMinStaked) {
+			rebateBps = uint256(vault.frMinRebate);
 		} else {
-			rebateBps = (frMaxRebate - frMinRebate) * (stakedCAP - frMinStaked) * 10**4 / (frMaxStaked - frMinStaked);
+			rebateBps = (uint256(vault.frMaxRebate) - uint256(vault.frMinRebate)) * (stakedCAP - vault.frMinStaked) * 10**4 / (vault.frMaxStaked - vault.frMinStaked);
 		}
 		return amount * products[productId].fee * rebateBps / 10**4;
 	}
@@ -567,105 +565,116 @@ contract Trading {
 
 	// Owner methods
 
-	function addVault(uint8 vaultId, address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee) external onlyOwner {
+	function addVault(uint8 vaultId, Vault memory _vault) external onlyOwner {
 		
 		Vault memory vault = vaults[vaultId];
 		require(vault.base == address(0), "!vault-exists");
 
-		require(cap > 0, "!cap");
-		require(maxOpenInterest > 0, "!maxOpenInterest");
-		require(maxDailyDrawdown > 0, "!maxDailyDrawdown");
-		require(stakingPeriod > 0, "!stakingPeriod");
-		require(redemptionPeriod > 0, "!redemptionPeriod");
-		require(protocolFee <= 200, "!protocolFee");
+		require(_vault.cap > 0, "!cap");
+		require(_vault.maxOpenInterest > 0, "!maxOpenInterest");
+		require(_vault.maxDailyDrawdown > 0, "!maxDailyDrawdown");
+		require(_vault.stakingPeriod > 0, "!stakingPeriod");
+		require(_vault.redemptionPeriod > 0, "!redemptionPeriod");
+		require(_vault.protocolFee <= 200, "!protocolFee");
 
 		vaults[vaultId] = Vault({
-			base: base,
-			cap: cap,
-			maxOpenInterest: maxOpenInterest,
-			maxDailyDrawdown: maxDailyDrawdown,
-			stakingPeriod: stakingPeriod,
-			redemptionPeriod: redemptionPeriod,
+			base: _vault.base,
+			cap: _vault.cap,
+			maxOpenInterest: _vault.maxOpenInterest,
+			maxDailyDrawdown: _vault.maxDailyDrawdown,
+			stakingPeriod: _vault.stakingPeriod,
+			redemptionPeriod: _vault.redemptionPeriod,
 			openInterest: 0,
 			balance: 0,
 			totalStaked: 0,
 			lastCheckpointBalance: 0,
 			lastCheckpointTime: block.timestamp,
-			protocolFee: protocolFee,
+			protocolFee: _vault.protocolFee,
+			frMinStaked: _vault.frMinStaked,
+			frMinRebate: _vault.frMinRebate,
+			frMaxStaked: _vault.frMaxStaked,
+			frMaxRebate: _vault.frMaxRebate,
 			isActive: true
 		});
 
-		emit VaultAdded(vaultId, base, cap, maxOpenInterest, maxDailyDrawdown, stakingPeriod, redemptionPeriod, protocolFee);
+		emit VaultAdded(vaultId, vaults[vaultId]);
 
 	}
 
-	function updateVault(uint8 vaultId, address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee, bool isActive) external onlyOwner {
+	function updateVault(uint8 vaultId, Vault memory _vault) external onlyOwner {
 
 		Vault storage vault = vaults[vaultId];
-		require(vault.base == base, "!vault-base");
+		require(vault.base == _vault.base, "!vault-base");
 
-		if (cap > 0) vault.cap = cap;
-		if (maxOpenInterest > 0) vault.maxOpenInterest = maxOpenInterest;
-		if (maxDailyDrawdown > 0) vault.maxDailyDrawdown = maxDailyDrawdown;
-		if (stakingPeriod > 0) vault.stakingPeriod = stakingPeriod;
-		if (redemptionPeriod > 0) vault.redemptionPeriod = redemptionPeriod;
+		if (_vault.cap > 0) vault.cap = _vault.cap;
+		if (_vault.maxOpenInterest > 0) vault.maxOpenInterest = _vault.maxOpenInterest;
+		if (_vault.maxDailyDrawdown > 0) vault.maxDailyDrawdown = _vault.maxDailyDrawdown;
+		if (_vault.stakingPeriod > 0) vault.stakingPeriod = _vault.stakingPeriod;
+		if (_vault.redemptionPeriod > 0) vault.redemptionPeriod = _vault.redemptionPeriod;
 
-		if (protocolFee <= 200) {
-			vault.protocolFee = protocolFee;
+		if (_vault.protocolFee <= 200) {
+			vault.protocolFee = _vault.protocolFee;
 		}
 
-		vault.isActive = isActive;
+		vault.frMinStaked = _vault.frMinStaked;
+		vault.frMinRebate = _vault.frMinRebate;
+		vault.frMaxStaked = _vault.frMaxStaked;
+		vault.frMaxRebate = _vault.frMaxRebate;
 
-		emit VaultUpdated(vaultId, base, vault.cap, vault.maxOpenInterest, vault.maxDailyDrawdown, vault.stakingPeriod, vault.redemptionPeriod, vault.protocolFee, vault.isActive);
+		vault.isActive = _vault.isActive;
+
+		emit VaultUpdated(vaultId, vault);
 
 	}
 
-	function addProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, uint256 settlementTime, uint256 minTradeDuration, uint256 liquidationThreshold, uint256 liquidationBounty) external onlyOwner {
+	function addProduct(uint16 productId, Product memory _product) external onlyOwner {
 
 		Product memory product = products[productId];
 
 		require(product.leverage == 0, "!product-exists");
-		require(leverage > 0, "!leverage");
-		require(feed != address(0), "!feed");
-		require(settlementTime > 0, "!settlementTime");
-		require(liquidationThreshold > 0, "!liquidationThreshold");
+
+		require(_product.leverage > 0, "!leverage");
+		require(_product.feed != address(0), "!feed");
+		require(_product.settlementTime > 0, "!settlementTime");
+		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		products[productId] = Product({
-			leverage: leverage,
-			fee: fee,
-			interest: interest,
-			feed: feed,
-			settlementTime: settlementTime,
-			minTradeDuration: minTradeDuration,
-			liquidationThreshold: liquidationThreshold,
-			liquidationBounty: liquidationBounty,
+			leverage: _product.leverage,
+			fee: _product.fee,
+			interest: _product.interest,
+			feed: _product.feed,
+			settlementTime: _product.settlementTime,
+			minTradeDuration: _product.minTradeDuration,
+			liquidationThreshold: _product.liquidationThreshold,
+			liquidationBounty: _product.liquidationBounty,
 			isActive: true
 		});
 
-		emit ProductAdded(productId, leverage, fee, interest, feed, settlementTime, minTradeDuration, liquidationThreshold, liquidationBounty);
+		emit ProductAdded(productId, products[productId]);
 
 	}
 
-	function updateProduct(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, uint256 settlementTime, uint256 minTradeDuration, uint256 liquidationThreshold, uint256 liquidationBounty, bool isActive) external onlyOwner {
+	function updateProduct(uint16 productId, Product memory _product) external onlyOwner {
 
 		Product storage product = products[productId];
 		
 		require(product.leverage > 0, "!product-exists");
-		require(leverage > 0, "!leverage");
-		require(feed != address(0), "!feed");
 
-		product.leverage = leverage;
-		product.fee = fee;
-		product.interest = interest;
-		product.feed = feed;
+		require(_product.leverage > 0, "!leverage");
+		require(_product.feed != address(0), "!feed");
 
-		if (settlementTime > 0) product.settlementTime = settlementTime;
-		product.minTradeDuration = minTradeDuration;
-		if (liquidationThreshold > 0) product.liquidationThreshold = liquidationThreshold;
-		product.liquidationBounty = liquidationBounty;
-		product.isActive = isActive;
+		product.leverage = _product.leverage;
+		product.fee = _product.fee;
+		product.interest = _product.interest;
+		product.feed = _product.feed;
+
+		if (_product.settlementTime > 0) product.settlementTime = _product.settlementTime;
+		product.minTradeDuration = _product.minTradeDuration;
+		if (_product.liquidationThreshold > 0) product.liquidationThreshold = _product.liquidationThreshold;
+		product.liquidationBounty = _product.liquidationBounty;
+		product.isActive = _product.isActive;
 		
-		emit ProductUpdated(productId, product.leverage, product.fee, product.interest, product.feed, product.settlementTime, product.minTradeDuration, product.liquidationThreshold, product.liquidationBounty, product.isActive);
+		emit ProductUpdated(productId, product);
 	
 	}
 
@@ -677,16 +686,6 @@ contract Trading {
 	function lockUser(address _address, bool _lock) external onlyOwner {
 		lockedUsers[_address] = _lock;
 		emit LockedUsersUpdated(_address, _lock);
-	}
-
-	function updateFeeRebates(uint256 minStaked, uint16 minRebate, uint256 maxStaked, uint16 maxRebate) external onlyOwner {
-		require(maxStaked >= minStaked, '!M1');
-		require(maxRebate >= minRebate, '!M2');
-		frMinStaked = minStaked;
-		frMinRebate = minRebate;
-		frMaxStaked = maxStaked;
-		frMaxRebate = maxRebate;
-		emit FeeRebatesUpdated(minStaked, minRebate, maxStaked, maxRebate);
 	}
 
 	function setOwner(address newOwner) external onlyOwner {
@@ -707,13 +706,12 @@ contract Trading {
 
 	event PositionLiquidated(uint256 indexed positionId, address indexed by, uint256 vaultReward, uint256 liquidatorReward);
 
-	event VaultAdded(uint8 vaultId, address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee);
-	event VaultUpdated(uint8 vaultId, address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee, bool isActive);
+	event VaultAdded(uint8 vaultId, Vault vault);
+	event VaultUpdated(uint8 vaultId, Vault vault);
 
-	event ProductAdded(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, uint256 settlementTime, uint256 minTradeDuration, uint256 liquidationThreshold, uint256 liquidationBounty);
-	event ProductUpdated(uint16 productId, uint256 leverage, uint256 fee, uint256 interest, address feed, uint256 settlementTime, uint256 minTradeDuration, uint256 liquidationThreshold, uint256 liquidationBounty, bool isActive);
+	event ProductAdded(uint16 productId, Product product);
+	event ProductUpdated(uint16 productId, Product product);
 
-	event FeeRebatesUpdated(uint256 minStaked, uint16 minRebate, uint256 maxStaked, uint16 maxRebate);
 	event CAPStakingContractUpdated(address _address);
 	event LockedUsersUpdated(address _address, bool _lock);
 	event OwnerUpdated(address newOwner);
