@@ -15,6 +15,11 @@ contract Trading {
 
 	/*
 	TODO
+	- fee rebates should be per vault, like protocol fee
+	- CAP staking contract and CAP mock token
+	- later, v2: add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
+	- DRY & document
+
 	-- user locking, closing/releasing of positions by owner
 	-- unstake = redeem
 	-- support for fee rebates when user has CAP staked, % set by owner (can be 0)
@@ -23,8 +28,6 @@ contract Trading {
 	-- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
 	-- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
 	-- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
-	- later, v2: add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
-	- DRY & document
 	*/
 
 	using SafeERC20 for IERC20;
@@ -78,6 +81,7 @@ contract Trading {
 	uint256 public currentPositionId; // incremental
 	address public CAPStakingContract;
 
+
 	// Fee rebate scale
 	uint256 frMinStaked; // CAP staked. 0 = min rebate without stake
 	uint256 frMaxStaked; // CAP staked. 0 = no fee rebates
@@ -118,7 +122,7 @@ contract Trading {
 		Vault storage vault = vaults[vaultId];
 		require(vault.base != address(0), "!V");
 		// !!! Local test, uncomment in prod
-		//require(block.timestamp % vault.stakingPeriod < vault.redemptionPeriod, "!P");
+		require(block.timestamp % vault.stakingPeriod < vault.redemptionPeriod, "!P");
 		require(amount <= vaultUserStaked[msg.sender][vaultId], "!S");
 		uint256 amountToSend = amount * vault.balance / vault.totalStaked;
 		vaultUserStaked[msg.sender][vaultId] -= amount;
@@ -266,31 +270,41 @@ contract Trading {
 		Position storage position = positions[positionId];
 		Vault storage vault = vaults[position.vaultId];
 
-		// P/L
 		int256 pnl;
-		if (position.isLong) {
-			pnl = int256(margin) * int256(position.leverage) * (int256(price) - int256(position.price)) / int256(position.price) / 10**6;
-		} else {
-			pnl = int256(margin) * int256(position.leverage) * (int256(position.price) - int256(price)) / int256(position.price) / 10**6;
-		}
-
-		// subtract interest from P/L
-		pnl -= int256(_calculateInterest(margin * position.leverage / 10**6, position.timestamp, interest));
-
-		// calculate fee rebate
 		uint256 feeRebateAmount;
-		if (frMaxRebate > 0) {
-			feeRebateAmount = _calculateFeeRebate(position.owner, margin * position.leverage / 10**6, position.productId);
-			pnl += int256(feeRebateAmount);
-		}
-
-		// calculate protocol fee
 		uint256 protocolFeeAmount;
-		if (vault.protocolFee > 0) {
-			protocolFeeAmount = vault.protocolFee * (margin * position.leverage / 10**6) / 10**4;
-			pnl -= int256(protocolFeeAmount);
-			IERC20(vault.base).safeTransfer(owner, protocolFeeAmount);
-		}
+
+		// is liquidatable?
+		bool isLiquidatable = _checkLiquidation(position, price);
+
+		if (isLiquidatable) {
+			margin = position.margin;
+			pnl = -1 * int256(margin);
+		} else {
+		
+			if (position.isLong) {
+				pnl = int256(margin) * int256(position.leverage) * (int256(price) - int256(position.price)) / int256(position.price) / 10**6;
+			} else {
+				pnl = int256(margin) * int256(position.leverage) * (int256(position.price) - int256(price)) / int256(position.price) / 10**6;
+			}
+
+			// subtract interest from P/L
+			pnl -= int256(_calculateInterest(margin * position.leverage / 10**6, position.timestamp, interest));
+
+			// calculate fee rebate
+			if (frMaxRebate > 0) {
+				feeRebateAmount = _calculateFeeRebate(position.owner, margin * position.leverage / 10**6, position.productId);
+				pnl += int256(feeRebateAmount);
+			}
+
+			// calculate protocol fee
+			if (vault.protocolFee > 0) {
+				protocolFeeAmount = vault.protocolFee * (margin * position.leverage / 10**6) / 10**4;
+				pnl -= int256(protocolFeeAmount);
+				IERC20(vault.base).safeTransfer(owner, protocolFeeAmount);
+			}
+
+		}		
 
 		if (margin < position.margin) {
 			// if partial close
@@ -308,10 +322,9 @@ contract Trading {
 		}
 
 		// update vault
-		uint256 amountToSendUser;
 		if (pnl < 0) {
 			if (uint256(-pnl) < margin) {
-				amountToSendUser = margin - uint256(-pnl);
+				IERC20(vault.base).safeTransfer(position.owner, margin - uint256(-pnl));
 				vault.balance += uint256(-pnl);
 			} else {
 				vault.balance += margin;
@@ -322,15 +335,12 @@ contract Trading {
 			// Require vault not below max drawdown
 			require(vault.balance - uint256(pnl) >= vault.lastCheckpointBalance * (10**4 - vault.maxDailyDrawdown) / 10**4, "!max-drawdown");
 			vault.balance -= uint256(pnl);
-			amountToSendUser = margin + uint256(pnl);			
+			IERC20(vault.base).safeTransfer(position.owner, margin + uint256(pnl));		
 		}
-
-		// send margin unlocked +/- pnl to user
-		IERC20(vault.base).safeTransfer(position.owner, amountToSendUser);
 
 		vault.openInterest -= margin * position.leverage / 10**6;
 
-		emit ClosePosition(positionId, position.owner, position.vaultId, position.productId, price, margin, position.leverage, pnl, feeRebateAmount, protocolFeeAmount, false);
+		emit ClosePosition(positionId, position.owner, position.vaultId, position.productId, price, margin, position.leverage, pnl, feeRebateAmount, protocolFeeAmount, isLiquidatable);
 
 	}
 
@@ -347,7 +357,7 @@ contract Trading {
 		require(price > 0, "!price");
 
 		// !!! local test
-		price = 1350000000000;
+		//price = 1350000000000;
 
 		uint256 liquidationPrice;
 		if (position.isLong) {
@@ -405,7 +415,7 @@ contract Trading {
 			}
 
 			// !!! Local test
-			settleTheseIds[i] = id;
+			//settleTheseIds[i] = id;
 
 		}
 
@@ -439,9 +449,9 @@ contract Trading {
 				}
 
 				// !!! local test
-				position.price = price;
-				position.isSettling = false;
-				settlingIds.remove(positionId);
+				//position.price = price;
+				//position.isSettling = false;
+				//settlingIds.remove(positionId);
 
 				emit NewPositionSettled(positionId, position.owner, price);
 
@@ -467,6 +477,22 @@ contract Trading {
 		return amount * (interest / 10**4) * (block.timestamp - uint256(timestamp)) / 360 days;
 	}
 
+	function _checkLiquidation(Position memory position, uint256 price) internal view returns (bool) {
+		Product memory product = products[position.productId];
+		uint256 liquidationPrice;
+		if (position.isLong) {
+			liquidationPrice = (price - price * product.liquidationThreshold / 10**4 / position.leverage);
+		} else {
+			liquidationPrice = (price + price * product.liquidationThreshold / 10**4 / position.leverage);
+		}
+
+		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
 	function _calculateFeeRebate(address user, uint256 amount, uint16 productId) internal view returns (uint256) {
 		// get fee rebate scale. min = [min CAP staked, min reward], max = [max CAP staked, max reward]. linear regression in between. can be [0, 10%], [200, 50%], means reward will be 10% back even with no CAP staked, up to 50%
 		// get CAP staked by user
@@ -489,8 +515,9 @@ contract Trading {
 
 	function getLatestPrice(uint16 productId) public view returns (uint256) {
 		Product memory product = products[productId];
+		//console.log('glp', 1);
 		require(product.feed != address(0), "!feed");
-		/*
+
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 		// standardize price to 8 decimals
 		(
@@ -499,13 +526,17 @@ contract Trading {
 			,
 			,
 		) = AggregatorV3Interface(product.feed).latestRoundData();
+		//console.log('glpp', uint256(price), uint256(decimals));
+		uint256 price_returned;
 		if (decimals != 8) {
-			price = price * (10**8) / (10**decimals);
+			price_returned = uint256(price) * (10**8) / (10**uint256(decimals));
+		} else {
+			price_returned = uint256(price);
 		}
-		*/
+
 		// local test
-		int256 price = 33500 * 10**8;
-		return uint256(price);
+		//int256 price = 33500 * 10**8;
+		return price_returned;
 	}
 
 	function getVault(uint8 vaultId) external view returns(Vault memory) {

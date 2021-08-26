@@ -16,7 +16,9 @@ async function main() {
 
   const signer = await hre.ethers.provider.getSigner();
 
-  const address = '0x4EE6eCAD1c2Dae9f525404De8555724e3c35d07B';
+  console.log('signer', await signer.getAddress());
+
+  const address = '0x60A23705Ae6526CF62e8D114E340C28F7C45Cf76';
   const abi = [
     "function checkPositionsToSettle() view returns(uint256[] memory)",
     "function settlePositions(uint256[] calldata)"

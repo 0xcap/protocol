@@ -22,6 +22,13 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const chainlink_feeds = { // ETH-usd, BTC-USD
+  localhost: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'], // same as mainnet because forked from it
+  mainnet: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'],
+  rinkeby: [,'0x8A753747A1Fa494EC906cE90E9f37563A8AF630e', '0xECe365B379E1dD183B20fc5f022230C044d51404'],
+  arbitrum: []
+}
+
 async function main() {
   // Hardhat always runs the compile task when running scripts with its command
   // line interface.
@@ -32,6 +39,14 @@ async function main() {
 
   const signer = await hre.ethers.provider.getSigner();
 
+  /*
+  await hre.ethers.provider.send('hardhat_setNonce', [
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "0x3b"
+  ]);
+  return;
+  */
+
   const account = await signer.getAddress();
   console.log('account', account);
 
@@ -41,6 +56,7 @@ async function main() {
   await usdc.deployed();
   console.log("USDC deployed to:", usdc.address);
 
+  // USDC address
   const base = usdc.address;
 
   const Trading = await hre.ethers.getContractFactory("Trading");
@@ -51,11 +67,11 @@ async function main() {
   await trading.addVault(1, base, 100000 * 10**6, 200000 * 10**6, 10 * 100, 30 * 24 * 3600, 8 * 3600, 0);
   console.log('Added vault USDC');
 
-  await trading.addProduct(1, 50 * 10**6, 50, 500, "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", 3 * 60, 15 * 60, 80 * 100, 5 * 100); // chainlink feed
-  console.log('Added product BTC/USD');
-
-  await trading.addProduct(2, 25 * 10**6, 50, 800, "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419", 3 * 60, 15 * 60, 80 * 100, 5 * 100); // chainlink feed
+  await trading.addProduct(1, 25 * 10**6, 50, 800, chainlink_feeds[hre.network.name][1], 3 * 60, 10 * 60, 80 * 100, 5 * 100); // chainlink feed
   console.log('Added product ETH/USD');
+
+  await trading.addProduct(2, 50 * 10**6, 50, 500, chainlink_feeds[hre.network.name][2], 3 * 60, 10 * 60, 80 * 100, 5 * 100); // chainlink feed
+  console.log('Added product BTC/USD');
 
   //const randomWallet = await hre.ethers.Wallet.createRandom();
   //console.log('Created random wallet', randomWallet);
