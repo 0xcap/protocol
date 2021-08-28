@@ -15,8 +15,8 @@ contract Trading {
 
 	/*
 	TODO
-	- fee rebates should be per vault, like protocol fee
-	- CAP staking contract and CAP mock token
+	-- fee rebates should be per vault, like protocol fee
+	- later: CAP staking contract and CAP mock token
 	- later, v2: add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
 	- DRY & document
 
@@ -181,7 +181,7 @@ contract Trading {
 
 				} else {
 					require(block.timestamp > position.timestamp + product.minTradeDuration, '!duration');
-					require(margin <= position.margin, "!margin-too-high");
+					if (margin > position.margin) margin = position.margin;
 					_closePosition(positionId, margin, price, product.interest, releaseMargin);
 				}
 			}
