@@ -13,23 +13,6 @@ import './interfaces/IStaking.sol';
 
 contract Trading {
 
-	/*
-	TODO
-	-- fee rebates should be per vault, like protocol fee
-	- later: CAP staking contract and CAP mock token
-	- later, v2: add keeper reward option, pay user that settles prices. 0 at first, but at least have option that it can be updated, so to incentivize anyone to call it. Paid from pool
-	- DRY & document
-
-	-- user locking, closing/releasing of positions by owner
-	-- unstake = redeem
-	-- support for fee rebates when user has CAP staked, % set by owner (can be 0)
-	-- max daily drawdown for vault, where if a position close makes it go down lower than that, it doesn't happen. Basically sampl vault balance at top of each day, low watermark is LW% below that. This is the only risk limit needed. This can be done on closePosition, if last vault sample > 24 hours, set vault sampled balance (checkpoint) 
-	-- pause all trading, or new positions, for example when going to a v2 contract (can't pause releaseMargin)
-	-- protocol fee that can be turned on (e.g. 0.5% of daily position close volume owed from vault if it's > its cap). Can set which address can claim this, can be governance treasury contract, value accruing to CAP holders
-	-- max open interest per vault to avoid trade size e.g. that is 3x bigger than vault, to avoid extreme scenarios (e.g. trader comes in with 100 wallets and does a quick scalp), can be re-adjusted as needed. This is already taken care of with the max drawdown mostly, so if previous scenario happens, user must be paused etc. This is to avoid pausing and discouraging such an attack
-	-- min trade duration, to avoid scalpers. can be adjusted, e.g. minimum 10minutes. This also gives time to hedge if needed.
-	*/
-
 	using SafeERC20 for IERC20;
 	using UintSet for UintSet.Set;
 
@@ -513,7 +496,6 @@ contract Trading {
 
 	function getLatestPrice(uint16 productId) public view returns (uint256) {
 		Product memory product = products[productId];
-		//console.log('glp', 1);
 		require(product.feed != address(0), "!feed");
 
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
@@ -524,7 +506,6 @@ contract Trading {
 			,
 			,
 		) = AggregatorV3Interface(product.feed).latestRoundData();
-		//console.log('glpp', uint256(price), uint256(decimals));
 		uint256 price_returned;
 		if (decimals != 8) {
 			price_returned = uint256(price) * (10**8) / (10**uint256(decimals));
