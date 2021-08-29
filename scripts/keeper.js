@@ -18,7 +18,7 @@ async function main() {
 
   console.log('signer', await signer.getAddress());
 
-  const address = '0x1fA02b2d6A771842690194Cf62D91bdd92BfE28d';
+  const address = '0xBEc49fA140aCaA83533fB00A2BB19bDdd0290f25';
   const abi = [
     "function checkPositionsToSettle() view returns(uint256[] memory)",
     "function settlePositions(uint256[] calldata)"

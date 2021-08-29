@@ -284,15 +284,6 @@ contract Trading {
 				IERC20(vault.base).safeTransfer(owner, protocolFeeAmount);
 			}
 
-		}		
-
-		if (margin < position.margin) {
-			// if partial close
-			position.margin -= margin;
-		} else {
-			// if full close
-			delete positions[positionId];
-			userPositionIds[position.owner][position.vaultId].remove(positionId);
 		}
 
 		// checkpoint vault
@@ -321,6 +312,15 @@ contract Trading {
 		vault.openInterest -= margin * position.leverage / 10**6;
 
 		emit ClosePosition(positionId, position.owner, position.vaultId, position.productId, price, margin, position.leverage, pnl, feeRebateAmount, protocolFeeAmount, isLiquidatable);
+
+		if (margin < position.margin) {
+			// if partial close
+			position.margin -= margin;
+		} else {
+			// if full close
+			userPositionIds[position.owner][position.vaultId].remove(positionId);
+			delete positions[positionId];
+		}
 
 	}
 

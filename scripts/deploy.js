@@ -67,16 +67,16 @@ async function main() {
   await trading.addVault(1, [base, 4000000 * 10**6, 8000000 * 10**6, 25 * 100, 30 * 24 * 3600, 8 * 3600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true]);
   console.log('Added vault USDC');
 
-  await trading.addProduct(1, [50 * 10**6, 0.1 * 100, 5 * 100, chainlink_feeds[hre.network.name][1], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(1, [50 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][1], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product ETH/USD');
 
-  await trading.addProduct(2, [100 * 10**6, 0.1 * 100, 5 * 100, chainlink_feeds[hre.network.name][2], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(2, [100 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][2], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product BTC/USD');
 
-  await trading.addProduct(3, [50 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][3], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(3, [50 * 10**6, 0.02 * 100, 5 * 100, chainlink_feeds[hre.network.name][3], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product Gold');
 
-  await trading.addProduct(4, [200 * 10**6, 0.02 * 100, 5 * 100, chainlink_feeds[hre.network.name][4], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(4, [200 * 10**6, 0.01 * 100, 5 * 100, chainlink_feeds[hre.network.name][4], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product EUR/USD');
 
 
