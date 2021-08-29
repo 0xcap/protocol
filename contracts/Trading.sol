@@ -106,8 +106,8 @@ contract Trading {
 
 	function stake(uint8 vaultId, uint256 amount) external {
 		Vault storage vault = vaults[vaultId];
-		require(vault.base != address(0), "!V");
-		require(vault.balance + amount <= vault.cap, "!C");
+		require(vault.base != address(0), "!vault");
+		require(vault.balance + amount <= vault.cap, "!cap");
 		vault.balance += amount;
 		vaultUserStaked[msg.sender][vaultId] += amount;
 		vault.totalStaked += amount;
@@ -117,10 +117,10 @@ contract Trading {
 
 	function redeem(uint8 vaultId, uint256 amount) external {
 		Vault storage vault = vaults[vaultId];
-		require(vault.base != address(0), "!V");
+		require(vault.base != address(0), "!vault");
 		// !!! Local test, uncomment in prod
-		require(block.timestamp % vault.stakingPeriod < vault.redemptionPeriod, "!P");
-		require(amount <= vaultUserStaked[msg.sender][vaultId], "!S");
+		require(block.timestamp % vault.stakingPeriod < vault.redemptionPeriod, "!redemption");
+		require(amount <= vaultUserStaked[msg.sender][vaultId], "!redeem-amount");
 		uint256 amountToSend = amount * vault.balance / vault.totalStaked;
 		vaultUserStaked[msg.sender][vaultId] -= amount;
 		vault.totalStaked -= amount;

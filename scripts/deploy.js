@@ -22,10 +22,10 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const chainlink_feeds = { // ETH-usd, BTC-USD
-  localhost: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'], // same as mainnet because forked from it
+const chainlink_feeds = { 
+  localhost: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c', '0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6', '0xb49f677943BC038e9857d61E7d053CaA2C1734C1'], // same as mainnet because forked from it. // ETH-USD, BTC-USD, Gold, EUR/USD
   mainnet: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'],
-  rinkeby: [,'0x8A753747A1Fa494EC906cE90E9f37563A8AF630e', '0xECe365B379E1dD183B20fc5f022230C044d51404'],
+  rinkeby: [,'0x8A753747A1Fa494EC906cE90E9f37563A8AF630e', '0xECe365B379E1dD183B20fc5f022230C044d51404', '0x81570059A0cb83888f1459Ec66Aad1Ac16730243', '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F'],// ETH-USD, BTC-USD, Gold, EUR/USD
   arbitrum: []
 }
 
@@ -64,19 +64,26 @@ async function main() {
   await trading.deployed();
   console.log("Cap Trading deployed to:", trading.address);
 
-  await trading.addVault(1, base, 100000 * 10**6, 200000 * 10**6, 10 * 100, 30 * 24 * 3600, 8 * 3600, 0);
+  await trading.addVault(1, [base, 4000000 * 10**6, 8000000 * 10**6, 25 * 100, 30 * 24 * 3600, 8 * 3600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true]);
   console.log('Added vault USDC');
 
-  await trading.addProduct(1, 25 * 10**6, 50, 800, chainlink_feeds[hre.network.name][1], 3 * 60, 10 * 60, 80 * 100, 5 * 100); // chainlink feed
+  await trading.addProduct(1, [50 * 10**6, 0.1 * 100, 5 * 100, chainlink_feeds[hre.network.name][1], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product ETH/USD');
 
-  await trading.addProduct(2, 50 * 10**6, 50, 500, chainlink_feeds[hre.network.name][2], 3 * 60, 10 * 60, 80 * 100, 5 * 100); // chainlink feed
+  await trading.addProduct(2, [100 * 10**6, 0.1 * 100, 5 * 100, chainlink_feeds[hre.network.name][2], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
   console.log('Added product BTC/USD');
+
+  await trading.addProduct(3, [50 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][3], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  console.log('Added product Gold');
+
+  await trading.addProduct(4, [200 * 10**6, 0.02 * 100, 5 * 100, chainlink_feeds[hre.network.name][4], 3 * 60, 6 * 60, 80 * 100, 5 * 100, true]);
+  console.log('Added product EUR/USD');
+
 
   //const randomWallet = await hre.ethers.Wallet.createRandom();
   //console.log('Created random wallet', randomWallet);
 
-  await usdc.mint(account, 100000 * 10**6);
+  await usdc.mint(account, 10000000 * 10**6);
   console.log('Minted USDC to', account, (await usdc.balanceOf(account)).toNumber());
 
   //await usdc.approve(trading.address, 10000000 * 10**6);
