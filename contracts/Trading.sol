@@ -60,7 +60,7 @@ contract Trading {
 		uint256 margin; // 32 bytes x 10**6
 		uint256 leverage; // 32 bytes x 10**6
 		uint256 price; // 32 bytes x 10**8
-		uint256 id; // 32 bytes
+		uint256 positionId; // 32 bytes
 	}
 
 	// Variables
@@ -199,7 +199,7 @@ contract Trading {
 			timestamp: uint64(block.timestamp),
 			isLong: isLong,
 			isSettling: true,
-			id: currentPositionId
+			positionId: currentPositionId
 		});
 		userPositionIds[user][vaultId].add(currentPositionId);
 		settlingIds.add(currentPositionId);
@@ -306,7 +306,7 @@ contract Trading {
 			// Require vault not below max drawdown
 			require(vault.balance - uint256(pnl) >= vault.lastCheckpointBalance * (10**4 - vault.maxDailyDrawdown) / 10**4, "!max-drawdown");
 			vault.balance -= uint256(pnl);
-			IERC20(vault.base).safeTransfer(position.owner, margin + uint256(pnl));		
+			IERC20(vault.base).safeTransfer(position.owner, margin + uint256(pnl));
 		}
 
 		vault.openInterest -= margin * position.leverage / 10**6;
@@ -679,11 +679,11 @@ contract Trading {
 	event Staked(address indexed from, uint8 indexed vaultId, uint256 amount);
 	event Redeemed(address indexed to, uint8 indexed vaultId, uint256 amount);
 
-	event NewPosition(uint256 id, address indexed user, uint8 indexed vaultId, uint16 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
-	event AddMargin(uint256 id, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
-	event ClosePosition(uint256 id, address indexed user, uint8 indexed vaultId, uint16 indexed productId, uint256 price, uint256 margin, uint256 leverage, int256 pnl, uint256 feeRebate, uint256 protocolFee, bool wasLiquidated);
+	event NewPosition(uint256 positionId, address indexed user, uint8 indexed vaultId, uint16 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
+	event AddMargin(uint256 positionId, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
+	event ClosePosition(uint256 positionId, address indexed user, uint8 indexed vaultId, uint16 indexed productId, uint256 price, uint256 margin, uint256 leverage, int256 pnl, uint256 feeRebate, uint256 protocolFee, bool wasLiquidated);
 
-	event NewPositionSettled(uint256 id, address indexed user, uint256 price);
+	event NewPositionSettled(uint256 positionId, address indexed user, uint256 price);
 
 	event PositionLiquidated(uint256 indexed positionId, address indexed by, uint256 vaultReward, uint256 liquidatorReward);
 
