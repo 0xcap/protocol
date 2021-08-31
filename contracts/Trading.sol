@@ -90,7 +90,7 @@ contract Trading {
 	function stake(uint8 vaultId, uint256 amount) external {
 		Vault storage vault = vaults[vaultId];
 		require(vault.base != address(0), "!vault");
-		require(vault.balance + amount <= vault.cap, "!cap");
+		require(vault.totalStaked + amount <= vault.cap, "!cap");
 		vault.balance += amount;
 		vaultUserStaked[msg.sender][vaultId] += amount;
 		vault.totalStaked += amount;
@@ -339,14 +339,7 @@ contract Trading {
 		// !!! local test
 		//price = 1350000000000;
 
-		uint256 liquidationPrice;
-		if (position.isLong) {
-			liquidationPrice = (price - price * product.liquidationThreshold / 10**4 / position.leverage);
-		} else {
-			liquidationPrice = (price + price * product.liquidationThreshold / 10**4 / position.leverage);
-		}
-
-		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
+		if (_checkLiquidation(position, price)) {
 
 			// Can be liquidated
 			uint256 vaultReward = position.margin * (10**4 - product.liquidationBounty) / 100;
@@ -457,6 +450,7 @@ contract Trading {
 		return amount * (interest / 10**4) * (block.timestamp - uint256(timestamp)) / 360 days;
 	}
 
+	// TODO: should include interest
 	function _checkLiquidation(Position memory position, uint256 price) internal view returns (bool) {
 		Product memory product = products[position.productId];
 		uint256 liquidationPrice;
