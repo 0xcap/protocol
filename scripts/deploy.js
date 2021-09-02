@@ -13,9 +13,12 @@ const fromBytes32 = function (string) {
   return ethers.utils.parseBytes32String(string);
 }
 
+const parseUnits = function (number, units) {
+  return ethers.utils.parseUnits(number, units || 18);
+}
+
 const formatUnits = function (number, units) {
-  if (!units) units = 6; // usdc
-  return ethers.utils.formatUnits(number, units);
+  return ethers.utils.formatUnits(number, units || 18);
 }
 
 function sleep(ms) {
@@ -38,7 +41,8 @@ async function main() {
   // manually to make sure everything is compiled
   // await hre.run('compile');
 
-  const signer = await hre.ethers.provider.getSigner();
+  const provider = hre.ethers.provider;
+  const signer = await provider.getSigner();
 
   /*
   await hre.ethers.provider.send('hardhat_setNonce', [
@@ -50,136 +54,157 @@ async function main() {
 
   const account = await signer.getAddress();
   console.log('account', account);
-
-  // Mint USDC Mock
-  const USDC = await hre.ethers.getContractFactory("USDCMock");
-  const usdc = await USDC.deploy();
-  await usdc.deployed();
-  console.log("USDC deployed to:", usdc.address);
-
-  // USDC address
-  const base = usdc.address;
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   const Trading = await hre.ethers.getContractFactory("Trading");
   const trading = await Trading.deploy();
   await trading.deployed();
   console.log("Cap Trading deployed to:", trading.address);
 
-  await trading.addVault(1, [base, 4000000 * 10**6, 8000000000 * 10**6, 25 * 100, 30 * 24 * 3600, 8 * 3600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true]);
-  console.log('Added vault USDC');
+  await trading.updateVault([
+    parseUnits("40000"), 
+    parseUnits("800000"),
+    0,
+    0,
+    0,
+    0,
+    0,
+    25 * 100, 
+    0,
+    30 * 24 * 3600, 
+    8 * 3600,
+    true
+  ]);
+  console.log('Updated vault');
 
-  await trading.addProduct(1, [50 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][1], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(1, [
+    parseUnits("50"), 
+    chainlink_feeds[hre.network.name][1],
+    0.05 * 100, 
+    5 * 100, 
+    1 * 60, 
+    0 * 60, 
+    80 * 100, 
+    5 * 100, 
+    true
+  ]);
   console.log('Added product ETH/USD');
 
-  await trading.addProduct(2, [100 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][2], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
+  await trading.addProduct(2, [
+    parseUnits("100"), 
+    chainlink_feeds[hre.network.name][2],
+    0.05 * 100, 
+    5 * 100, 
+    1 * 60, 
+    0 * 60, 
+    80 * 100, 
+    5 * 100, 
+    true
+  ]);
   console.log('Added product BTC/USD');
 
   if (chainlink_feeds[hre.network.name][3]) {
-    await trading.addProduct(3, [50 * 10**6, 0.02 * 100, 5 * 100, chainlink_feeds[hre.network.name][3], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
+    await trading.addProduct(3, [
+      parseUnits("50"), 
+      chainlink_feeds[hre.network.name][3],
+      0.02 * 100, 
+      5 * 100, 
+      1 * 60, 
+      0 * 60, 
+      80 * 100, 
+      5 * 100, 
+      true
+    ]);
     console.log('Added product Gold');
   }
   
   if (chainlink_feeds[hre.network.name][4]) {
-    await trading.addProduct(4, [200 * 10**6, 0.01 * 100, 5 * 100, chainlink_feeds[hre.network.name][4], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
+    await trading.addProduct(4, [
+      parseUnits("200"), 
+      chainlink_feeds[hre.network.name][4],
+      0.01 * 100, 
+      5 * 100, 
+      1 * 60, 
+      0 * 60, 
+      80 * 100, 
+      5 * 100, 
+      true
+    ]);
     console.log('Added product EUR/USD');
   }
 
+  // return
+
+  // Below are method tests
 
   //const randomWallet = await hre.ethers.Wallet.createRandom();
   //console.log('Created random wallet', randomWallet);
 
-  await usdc.mint(account, 10000000 * 10**6);
-  console.log('Minted USDC to', account, (await usdc.balanceOf(account)).toNumber());
-
-  //await usdc.approve(trading.address, 10000000 * 10**6);
-  //console.log('Approved Trading contract to spend USDC');
-
   // Stake in vault
-  //await trading.stake(1, 10000 * 10**6);
-  //console.log('Staked', 10000);
-
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-
-  return;
-  // below this are local tests, not needing for client interaction
-
-  //await usdc.transfer(randomWallet.address, 2000 * 10**6);
-  //console.log((await usdc.balanceOf(randomWallet.address)).toNumber());
-
-  // deposit
-  /*
-  console.log('h');
-  await trading.deposit(base, 1000 * 10**6);
-  console.log('g');
-  console.log('Deposited 1000 USDC. Balance:', formatUnits(await mu.balances(account, base)));
-  console.log('y');
-
-  // withdraw
-  await mu.withdraw(base, 300 * 10**6);
-  console.log('Withdrew 300 USDC. Balance:', formatUnits(await mu.balances(account, base)));
-  */
+  await trading.stake({value: parseUnits("100")});
+  console.log('Staked 100 ETH');
 
   // submit order
-  await trading.submitOrder(1, 1, true, 0, 100 * 10**6, 10 * 10**6, false);
-  console.log('Submitted order');
+  await trading.submitOrder(1, true, parseUnits("50"), 0, false, {value: parseUnits("10")});
+  console.log('Submitted order long 10 ETH at 100x');
 
-  let positions = await trading.getUserPositions(account, 1);
+  let positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // settle open position
-  let settlingIds = await trading.checkSettlement();  
+  let settlingIds = await trading.checkPositionsToSettle();  
   console.log('Settling Ids', settlingIds);
 
-  await trading.performSettlement(settlingIds);
+  await trading.settlePositions(settlingIds);
   console.log('Settling position open (perform)');
 
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  settlingIds = await trading.checkSettlement();  
+  settlingIds = await trading.checkPositionsToSettle();  
   console.log('Settling Ids (2)', settlingIds);
 
   // add margin
-  await trading.submitOrder(1, 1, true, 1, 50 * 10**6, 1, false);
-  console.log('Added margin');
+  await trading.submitOrder(1, true, parseUnits("50"), 1, false, {value: parseUnits("5")});
+  console.log('Added 5 ETH margin');
 
-  positions = await trading.getUserPositions(account, 1);
-
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-
-  // close position partial (25)
-  await trading.submitOrder(1, 1, false, 1, 25 * 10**6, 1, false);
-  console.log('Closed partially');
-
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
-  // close remainder (125)
-  await trading.submitOrder(1, 1, false, 1, 125 * 10**6, 1, false);
+  // close position partial (2)
+  await trading.submitOrder(1, false, 1, 1, false, {value: parseUnits("2")});
+  console.log('Closed 2 ETH partially');
 
+  positions = await trading.getUserPositions(account);
+
+  console.log('Positions', positions);
+  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
+
+  // close remainder (13)
+  await trading.submitOrder(1, false, 1, 1, false, {value: parseUnits("13")});
   console.log('Closed fully');
 
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   //console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
 
   /*
   // liquidate position
