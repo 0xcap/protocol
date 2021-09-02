@@ -117,22 +117,16 @@ contract Trading {
 
 	// Trading methods
 
-	function submitOrder(
+	function openPosition(
 		uint16 productId,
 		bool isLong,
-		uint256 leverage,
-		uint256 positionId,
-		bool releaseMargin
+		uint256 leverage
 	) external payable {
 
-		// Checks: input
 		uint256 margin = msg.value;
+
 		require(margin > 0, "!margin");
 		require(leverage > 0, '!leverage');
-
-		address user = msg.sender;
-
-		require(!lockedUsers[user], '!locked');
 
 		// Checks: vault
 		require(vault.isActive, "!vault-active");
@@ -140,49 +134,13 @@ contract Trading {
 		// Checks: product
 		Product memory product = products[productId];
 		require(product.isActive, "!product-active");
-		
-		require(leverage <= product.leverage, "!max-leverage");
 
-		// Get price
+		// Checks: price
 		uint256 price = _calculatePriceWithFee(getLatestPrice(productId), product.fee, isLong);
 		require(price > 0, "!price");
 
-		if (positionId > 0) {
-
-			Position memory position = positions[positionId];
-			require(position.productId > 0, "!position");
-			require(!position.isSettling, "!settling");
-
-			// Check owner
-			if (user == position.owner || lockedUsers[position.owner] && user == owner) {
-
-				if (position.isLong == isLong) {
-					_addMargin(positionId, margin);
-				} else {
-					require(block.timestamp > position.timestamp + product.minTradeDuration, '!duration');
-					console.log('margin', margin);
-					console.log('position.margin', position.margin);
-					if (margin > position.margin) margin = position.margin;
-					_closePosition(positionId, margin, price, product.interest, releaseMargin);
-				}
-			}
-
-		} else {
-			_openPosition(productId, isLong, margin, leverage, price);
-		}
-
-	}
-
-	function _openPosition(
-		uint16 productId,
-		bool isLong,
-		uint256 margin,
-		uint256 leverage,
-		uint256 price
-	) internal {
-
 		address payable user = payable(msg.sender);
-		
+
 		// Create position
 		currentPositionId += 1;
 		positions[currentPositionId] = Position({
@@ -199,12 +157,6 @@ contract Trading {
 		userPositionIds[user].add(currentPositionId);
 		settlingIds.add(currentPositionId);
 
-		console.log('margin', margin);
-		console.log('vault.maxOpenInterest', vault.maxOpenInterest);
-		console.log('vault.openInterest', vault.openInterest);
-		console.log('leverage', leverage);
-		console.log('amount', margin * leverage / 10**18);
-
 		vault.openInterest += margin * leverage / 10**18;
 		require(vault.openInterest <= vault.maxOpenInterest, "!max-open-interest");
 
@@ -220,9 +172,19 @@ contract Trading {
 
 	}
 
-	function _addMargin(uint256 positionId, uint256 margin) internal {
+	function addMargin(uint256 positionId) external payable {
+
+		uint256 margin = msg.value;
+
+		require(margin > 0, "!margin");
 
 		Position storage position = positions[positionId];
+		require(position.productId > 0, "!position");
+
+		address payable user = payable(msg.sender);
+		require(user == position.owner || lockedUsers[position.owner] && user == owner, "!owner");
+
+		require(!position.isSettling, "!settling");
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
@@ -236,17 +198,33 @@ contract Trading {
 
 	}
 
-	function _closePosition(
+	function closePosition(
 		uint256 positionId, 
-		uint256 margin, 
-		uint256 price, 
-		uint256 interest,
+		uint256 margin,
 		bool releaseMargin
-	) internal {
+	) external {
+
+		require(margin > 0, "!margin");
+
+		// Get position
+		Position storage position = positions[positionId];
+		require(position.productId > 0, "!position");
+
+		address payable user = payable(msg.sender);
+		require(user == position.owner || lockedUsers[position.owner] && user == owner, "!owner");
+
+		require(!position.isSettling, "!settling");
+
+		Product memory product = products[position.productId];
+
+		require(block.timestamp > position.timestamp + product.minTradeDuration, '!duration');
+		if (margin > position.margin) margin = position.margin;
+
+		// Checks: price
+		uint256 price = _calculatePriceWithFee(getLatestPrice(position.productId), product.fee, !position.isLong);
+		require(price > 0, "!price");
 
 		// Close (full or partial)
-
-		Position storage position = positions[positionId];
 
 		int256 pnl;
 		uint256 protocolFeeAmount;
@@ -268,7 +246,7 @@ contract Trading {
 			}
 
 			// subtract interest from P/L
-			pnl -= int256(_calculateInterest(margin * position.leverage / 10**18, position.timestamp, interest));
+			pnl -= int256(_calculateInterest(margin * position.leverage / 10**18, position.timestamp, product.interest));
 
 			// calculate protocol fee
 			if (vault.protocolFee > 0) {
@@ -451,7 +429,7 @@ contract Trading {
 		}
 
 		console.log('liquidationPrice', liquidationPrice);
-		
+
 		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
 			return true;
 		} else {

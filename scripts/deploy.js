@@ -145,7 +145,7 @@ async function main() {
   console.log('Staked 100 ETH');
 
   // submit order
-  await trading.submitOrder(1, true, parseUnits("50"), 0, false, {value: parseUnits("10")});
+  await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10")});
   console.log('Submitted order long 10 ETH at 100x');
 
   let positions = await trading.getUserPositions(account);
@@ -172,7 +172,7 @@ async function main() {
   console.log('Settling Ids (2)', settlingIds);
 
   // add margin
-  await trading.submitOrder(1, true, parseUnits("50"), 1, false, {value: parseUnits("5")});
+  await trading.addMargin(1, {value: parseUnits("5")});
   console.log('Added 5 ETH margin');
 
   positions = await trading.getUserPositions(account);
@@ -183,7 +183,7 @@ async function main() {
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // close position partial (2)
-  await trading.submitOrder(1, false, 1, 1, false, {value: parseUnits("2")});
+  await trading.closePosition(1, parseUnits("2"), false);
   console.log('Closed 2 ETH partially');
 
   positions = await trading.getUserPositions(account);
@@ -195,7 +195,7 @@ async function main() {
   console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
 
   // close remainder (13)
-  await trading.submitOrder(1, false, 1, 1, false, {value: parseUnits("13")});
+  await trading.closePosition(1, parseUnits("13"), false);
   console.log('Closed fully');
 
   positions = await trading.getUserPositions(account);
