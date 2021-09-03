@@ -44,8 +44,9 @@ contract Trading {
 		bool isActive; // 1 byte
 
 		// 32 bytes
-		uint88 maxExposure; // 11 bytes
-		int88 openInterest; // negative if short. 8 decimal units. 11 bytes
+		uint64 maxExposure; // 8 bytes
+		uint56 openInterestLong; // 8 decimal units. 7 bytes
+		uint56 openInterestShort; // 8 decimal units. 7 bytes
 		uint16 interest; // for 360 days, in bps. 5.35% = 535. 2 bytes
 		uint16 settlementTime; // in seconds. make default 6min. 2 bytes
 		uint16 minTradeDuration; // in seconds. make default 15min. 2 bytes
@@ -177,19 +178,26 @@ contract Trading {
 		uint256 margin = msg.value / 10**10; // cut to 8 decimals
 
 		require(margin > 0, "!margin");
-		require(leverage > 0, '!leverage');
+		require(leverage > 0, "!leverage");
 
 		// Checks: product
 		// 3K gas
 		Product storage product = products[productId];
 		require(product.isActive, "!product-active");
+		require(leverage <= product.maxLeverage, "!max-leverage");
 
 		// 6K gas
 		uint256 amount = margin * leverage / 10**8;
 		if (isLong) {
-			product.openInterest += int88(uint88(amount));
+			product.openInterestLong += uint56(amount);
 		} else {
-			product.openInterest -= int88(uint88(amount));
+			product.openInterestShort += uint56(amount);
+		}
+
+		if (product.openInterestLong > product.openInterestShort) {
+			require(uint256(product.openInterestLong) - uint256(product.openInterestShort) <= uint256(product.maxExposure), "!exposure-long");
+		} else {
+			require(uint256(product.openInterestShort) - uint256(product.openInterestLong) <= uint256(product.maxExposure), "!exposure-short");
 		}
 
 		// Checks: price
@@ -266,14 +274,10 @@ contract Trading {
 		// margin already sent with 8 decimals
 		require(margin > 0, "!margin");
 
-		console.log('margin', margin);
-
 		// Get position
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 		require(!position.isSettling, "!settling");
-
-		console.log('position.margin', position.margin);
 
 		address user = msg.sender;
 		require(user == position.owner, "!owner");
@@ -296,18 +300,12 @@ contract Trading {
 		// is liquidatable?
 		bool isLiquidatable = _checkLiquidation(position, price, uint256(product.liquidationThreshold));
 
-		console.log('isLiquidatable', isLiquidatable);
-		console.log('position.price', position.price);
-
 		if (isLiquidatable) {
 			margin = uint256(position.margin);
 			pnl = margin;
 			pnlIsNegative = true;
 		} else {
 			
-			console.log('price', price);
-			console.log('amount', position.leverage, margin * uint256(position.leverage));
-
 			if (position.isLong) {
 				if (price > uint256(position.price)) {
 					pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
@@ -323,8 +321,6 @@ contract Trading {
 					pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
 				}
 			}
-
-			console.log('pnl intermd', pnl);
 
 			// subtract interest from P/L
 			uint256 interest = _calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), product.interest);
@@ -361,8 +357,6 @@ contract Trading {
 			isFullClose = true;
 		}
 
-		console.log('isFullClose', isFullClose);
-
 		// checkpoint vault
 		if (uint256(vault.lastCheckpointTime) < block.timestamp - 24 hours) {
 			vault.lastCheckpointTime = uint80(block.timestamp);
@@ -371,7 +365,6 @@ contract Trading {
 
 		// update vault
 		if (pnlIsNegative) {
-			console.log('pnl neg', pnl);
 			if (pnl < margin) {
 				payable(position.owner).transfer((margin - pnl) * 10**10);
 				vault.balance += uint96(pnl);
@@ -379,7 +372,6 @@ contract Trading {
 				vault.balance += uint96(margin);
 			}
 		} else {
-			console.log('pnl pos', pnl);
 			if (releaseMargin) pnl = 0; // in cases to unlock margin when there's not enough in the vault, user can always get back their margin
 			require(uint256(vault.balance) >= pnl, "!vault-insufficient");
 			// Require vault not below max drawdown
@@ -388,7 +380,11 @@ contract Trading {
 			payable(position.owner).transfer((margin + pnl) * 10**10);
 		}
 
-		product.openInterest -= int88(uint88(margin * uint256(position.leverage) / 10**8));
+		if (position.isLong) {
+			product.openInterestLong -= uint56(margin * uint256(position.leverage) / 10**8);
+		} else {
+			product.openInterestShort -= uint56(margin * uint256(position.leverage) / 10**8);
+		}
 
 		emit ClosePosition(
 			positionId, 
@@ -406,7 +402,6 @@ contract Trading {
 
 		if (isFullClose) {
 			delete positions[positionId];
-			console.log('deleted', positionId);
 		}
 
 	}
@@ -502,8 +497,19 @@ contract Trading {
 	// Getters
 
 	function getPosition(uint256 positionId) external view returns(Position memory) {
-		console.log('getting', positionId);
 		return positions[positionId];
+	}
+
+	function getStake(uint256 stakeId) external view returns(Stake memory) {
+		return stakes[stakeId];
+	}
+
+	function getVault() external view returns(Vault memory) {
+		return vault;
+	}
+
+	function getProduct(uint16 productId) external view returns(Product memory) {
+		return products[productId];
 	}
 
 	// Internal methods
@@ -547,15 +553,13 @@ contract Trading {
 	}
 
 	// TODO: should include interest
-	function _checkLiquidation(Position memory position, uint256 price, uint256 liquidationThreshold) internal view returns (bool) {
+	function _checkLiquidation(Position memory position, uint256 price, uint256 liquidationThreshold) internal pure returns (bool) {
 		uint256 liquidationPrice;
 		if (position.isLong) {
 			liquidationPrice = (price - price * liquidationThreshold / 10**4 / (uint256(position.leverage) / 10**8));
 		} else {
 			liquidationPrice = (price + price * liquidationThreshold / 10**4 / (uint256(position.leverage) / 10**8));
 		}
-
-		console.log('liquidationPrice', liquidationPrice);
 
 		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
 			return true;
@@ -595,7 +599,8 @@ contract Trading {
 			fee: _product.fee,
 			isActive: true,
 			maxExposure: _product.maxExposure,
-			openInterest: 0,
+			openInterestLong: 0,
+			openInterestShort: 0,
 			interest: _product.interest,
 			settlementTime: _product.settlementTime,
 			minTradeDuration: _product.minTradeDuration,
@@ -607,148 +612,40 @@ contract Trading {
 
 	}
 
-	/*
+	function updateProduct(uint16 productId, Product memory _product) external onlyOwner {
 
-	
-
-	
-
-	// Liquidation methods
-
-	
-
-	function settlePositions(uint256[] calldata positionIds) external {
-
-		uint256 length = positionIds.length;
+		Product storage product = products[productId];
 		
-		for (uint256 i = 0; i < length; i++) {
-		
-			uint256 positionId = positionIds[i];
+		require(product.maxLeverage > 0, "!product-exists");
 
-			Position storage position = positions[positionId];
-			if (!position.isSettling) continue;
-
-			Product memory product = products[position.productId];
-
-			uint256 price = _calculatePriceWithFee(getLatestPrice(position.productId), product.fee, position.isLong);
-
-			if (price > 0) {
-
-				if (block.timestamp - uint256(position.timestamp) > product.settlementTime || price != position.price) {
-					position.price = uint64(price);
-					position.isSettling = false;
-				}
-
-				// !!! local test
-				position.price = uint64(price);
-				position.isSettling = false;
-
-				emit NewPositionSettled(positionId, position.owner, price);
-
-			}
-
-		}
-
-	}
-
-	function addPool(uint16 productId, Product memory _product) external {
-
-		Product memory product = products[productId];
-
-		require(product.leverage == 0, "!product-exists");
-
-		require(_product.leverage > 0, "!leverage");
+		require(_product.maxLeverage > 0, "!leverage");
 		require(_product.feed != address(0), "!feed");
-		require(_product.settlementTime > 0, "!settlementTime");
-		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
-		products[productId] = Product({
-			leverage: _product.leverage,
-			fee: _product.fee,
-			interest: _product.interest,
-			feed: _product.feed,
-			settlementTime: _product.settlementTime,
-			minTradeDuration: _product.minTradeDuration,
-			liquidationThreshold: _product.liquidationThreshold,
-			liquidationBounty: _product.liquidationBounty,
-			isActive: true
-		});
+		product.maxLeverage = _product.maxLeverage;
+		product.fee = _product.fee;
+		product.interest = _product.interest;
+		product.feed = _product.feed;
 
-		emit ProductAdded(productId, products[productId]);
-
-	}
-
-	// Internal utilities
-
-	function _calculatePriceWithFee(uint256 price, uint256 fee, bool isLong) internal pure returns(uint256) {
-		if (price == 0) return 0;
-		if (isLong) {
-			return price + price * fee / 10**4;
-		} else {
-			return price - price * fee / 10**4;
-		}
-	}
-
+		if (_product.settlementTime > 0) product.settlementTime = _product.settlementTime;
+		product.minTradeDuration = _product.minTradeDuration;
+		if (_product.liquidationThreshold > 0) product.liquidationThreshold = _product.liquidationThreshold;
+		product.liquidationBounty = _product.liquidationBounty;
+		product.isActive = _product.isActive;
+		
+		emit ProductUpdated(productId, product);
 	
-
-	
-
-	// Getters
-
-	function getLatestPrice(uint16 productId) public view returns (uint256) {
-		Product memory product = products[productId];
-		require(product.feed != address(0), "!feed");
-
-		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
-		// standardize price to 8 decimals
-		(
-			, 
-			int price,
-			,
-			,
-		) = AggregatorV3Interface(product.feed).latestRoundData();
-		uint256 price_returned;
-		if (decimals != 8) {
-			price_returned = uint256(price) * (10**8) / (10**uint256(decimals));
-		} else {
-			price_returned = uint256(price);
-		}
-
-		// local test
-		//int256 price = 33500 * 10**8;
-		return price_returned;
 	}
 
-	function getVault() external view returns(Vault memory) {
-		return vault;
-	}
-
-	function getProduct(uint16 productId) external view returns(Product memory) {
-		return products[productId];
-	}
-
-	
-
-	function getUserStaked(address user) external view returns (uint256) {
-		return userStaked[user];
-	}
-
-	// Owner methods
-
-	function setProtocolFee(uint256 bps) external {
-		require(msg.sender == owner, '!owner');
+	function setProtocolFee(uint256 bps) external onlyOwner {
 		require(bps < 300, '!too-much'); // 3% in bps
 		protocolFee = bps;
 		emit ProtocolFeeUpdated(protocolFee);
 	}
 
-	function setOwner(address payable newOwner) external {
-		require(msg.sender == owner, '!owner');
+	function setOwner(address payable newOwner) external onlyOwner {
 		owner = newOwner;
 		emit OwnerUpdated(newOwner);
 	}
-
-	*/
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, '!owner');
