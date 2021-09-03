@@ -94,7 +94,7 @@ contract Trading {
 
 	event NewPosition(uint256 positionId, address indexed user, uint64 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 positionId, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
-	event ClosePosition(uint256 positionId, address indexed user, uint64 indexed productId, uint256 price, uint256 margin, uint256 leverage, int256 pnl, uint256 protocolFee, bool isFullClose, bool wasLiquidated);
+	event ClosePosition(uint256 positionId, address indexed user, uint64 indexed productId, uint256 price, uint256 margin, uint256 leverage, uint256 pnl, bool pnlIsNegative, uint256 protocolFee, bool isFullClose, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 positionId, address indexed user, uint256 price);
 
@@ -160,7 +160,7 @@ contract Trading {
 		vault.staked -= uint64(amount);
 		vault.balance -= uint96(amountToSend);
 
-		payable(user).transfer(amountToSend);
+		payable(user).transfer(amountToSend * 10**10);
 		emit Redeemed(stakeId, user, amountToSend);
 
 	}
@@ -266,10 +266,14 @@ contract Trading {
 		// margin already sent with 8 decimals
 		require(margin > 0, "!margin");
 
+		console.log('margin', margin);
+
 		// Get position
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 		require(!position.isSettling, "!settling");
+
+		console.log('position.margin', position.margin);
 
 		address user = msg.sender;
 		require(user == position.owner, "!owner");
@@ -285,7 +289,8 @@ contract Trading {
 
 		// Close (full or partial)
 
-		int256 pnl;
+		uint256 pnl;
+		bool pnlIsNegative;
 		uint256 protocolFeeAmount;
 
 		// is liquidatable?
@@ -296,34 +301,67 @@ contract Trading {
 
 		if (isLiquidatable) {
 			margin = uint256(position.margin);
-			pnl = -1 * int256(margin);
+			pnl = margin;
+			pnlIsNegative = true;
 		} else {
-		
+			
+			console.log('price', price);
+			console.log('amount', position.leverage, margin * uint256(position.leverage));
+
 			if (position.isLong) {
-				pnl = int256(margin) * int256(uint256(position.leverage)) * (int256(price) - int256(uint256(position.price))) / int256(uint256(position.price)) / 10**8;
+				if (price > uint256(position.price)) {
+					pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+				} else {
+					pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+					pnlIsNegative = true;
+				}
 			} else {
-				pnl = int256(margin) * int256(uint256(position.leverage)) * (int256(uint256(position.price)) - int256(price)) / int256(uint256(position.price)) / 10**8;
+				if (price > uint256(position.price)) {
+					pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+					pnlIsNegative = true;
+				} else {
+					pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				}
 			}
 
+			console.log('pnl intermd', pnl);
+
 			// subtract interest from P/L
-			pnl -= int256(_calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), product.interest));
+			uint256 interest = _calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), product.interest);
+			if (pnlIsNegative) {
+				pnl += interest;
+			} else if (pnl < interest) {
+				pnl = interest - pnl;
+				pnlIsNegative = true;
+			} else {
+				pnl -= interest;
+			}
 
 			// calculate protocol fee
 			if (protocolFee > 0) {
-				protocolFeeAmount = protocolFee * (margin * position.leverage / 10**18) / 10**4;
-				pnl -= int256(protocolFeeAmount);
-				payable(owner).transfer(protocolFeeAmount);
+				protocolFeeAmount = protocolFee * (margin * position.leverage / 10**8) / 10**4;
+				payable(owner).transfer(protocolFeeAmount * 10**10);
+				if (pnlIsNegative) {
+					pnl += protocolFeeAmount;
+				} else if (pnl < protocolFeeAmount) {
+					pnl = protocolFeeAmount - pnl;
+					pnlIsNegative = true;
+				} else {
+					pnl -= protocolFeeAmount;
+				}
 			}
 
 		}
 
 		bool isFullClose;
-		if (margin < position.margin) {
+		if (margin < uint256(position.margin)) {
 			// if partial close
 			position.margin -= uint64(margin);
 		} else {
 			isFullClose = true;
 		}
+
+		console.log('isFullClose', isFullClose);
 
 		// checkpoint vault
 		if (uint256(vault.lastCheckpointTime) < block.timestamp - 24 hours) {
@@ -332,20 +370,22 @@ contract Trading {
 		}
 
 		// update vault
-		if (pnl < 0) {
-			if (uint256(-pnl) < margin) {
-				payable(position.owner).transfer(margin - uint256(-pnl));
-				vault.balance += uint96(uint256(-pnl));
+		if (pnlIsNegative) {
+			console.log('pnl neg', pnl);
+			if (pnl < margin) {
+				payable(position.owner).transfer((margin - pnl) * 10**10);
+				vault.balance += uint96(pnl);
 			} else {
 				vault.balance += uint96(margin);
 			}
 		} else {
+			console.log('pnl pos', pnl);
 			if (releaseMargin) pnl = 0; // in cases to unlock margin when there's not enough in the vault, user can always get back their margin
-			require(uint256(vault.balance) >= uint256(pnl), "!vault-insufficient");
+			require(uint256(vault.balance) >= pnl, "!vault-insufficient");
 			// Require vault not below max drawdown
-			require(uint256(vault.balance) - uint256(pnl) >= uint256(vault.lastCheckpointBalance) * (10**4 - uint256(vault.maxDailyDrawdown)) / 10**4, "!max-drawdown");
-			vault.balance -= uint96(uint256(pnl));
-			payable(position.owner).transfer(margin + uint256(pnl));
+			require(uint256(vault.balance) - pnl >= uint256(vault.lastCheckpointBalance) * (10**4 - uint256(vault.maxDailyDrawdown)) / 10**4, "!max-drawdown");
+			vault.balance -= uint96(pnl);
+			payable(position.owner).transfer((margin + pnl) * 10**10);
 		}
 
 		product.openInterest -= int88(uint88(margin * uint256(position.leverage) / 10**8));
@@ -358,6 +398,7 @@ contract Trading {
 			margin, 
 			uint256(position.leverage), 
 			pnl, 
+			pnlIsNegative,
 			protocolFeeAmount, 
 			isFullClose, 
 			isLiquidatable
@@ -365,6 +406,57 @@ contract Trading {
 
 		if (isFullClose) {
 			delete positions[positionId];
+			console.log('deleted', positionId);
+		}
+
+	}
+
+	function liquidatePosition(uint256 positionId) external {
+
+		Position memory position = positions[positionId];
+		require(!position.isSettling, "!settling");
+
+		Product memory product = products[position.productId];
+
+		uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
+		require(price > 0, "!price");
+
+		// !!! local test
+		price = 1350000000000;
+
+		if (_checkLiquidation(position, price, uint256(product.liquidationThreshold))) {
+
+			// Can be liquidated
+			uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 100;
+			uint256 liquidatorReward = uint256(position.margin) - vaultReward;
+
+			vault.balance += uint96(vaultReward);
+
+			payable(msg.sender).transfer(liquidatorReward);
+
+			emit ClosePosition(
+				positionId, 
+				position.owner, 
+				position.productId, 
+				price, 
+				uint256(position.margin), 
+				uint256(position.leverage), 
+				uint256(position.margin),
+				true, 
+				0, 
+				true,
+				true
+			);
+
+			delete positions[positionId];
+
+			emit PositionLiquidated(
+				positionId, 
+				msg.sender, 
+				uint256(vaultReward), 
+				uint256(liquidatorReward)
+			);
+
 		}
 
 	}
@@ -410,6 +502,7 @@ contract Trading {
 	// Getters
 
 	function getPosition(uint256 positionId) external view returns(Position memory) {
+		console.log('getting', positionId);
 		return positions[positionId];
 	}
 
@@ -522,38 +615,7 @@ contract Trading {
 
 	// Liquidation methods
 
-	function liquidatePosition(uint256 positionId) external {
-
-		Position memory position = positions[positionId];
-		require(!position.isSettling, "!settling");
-
-		Product memory product = products[position.productId];
-
-		uint256 price = _calculatePriceWithFee(getLatestPrice(position.productId), product.fee, !position.isLong);
-		require(price > 0, "!price");
-
-		// !!! local test
-		//price = 1350000000000;
-
-		if (_checkLiquidation(position, price)) {
-
-			// Can be liquidated
-			uint256 vaultReward = position.margin * (10**4 - product.liquidationBounty) / 100;
-			uint256 liquidatorReward = position.margin - vaultReward;
-
-			vault.balance += vaultReward;
-
-			payable(msg.sender).transfer(liquidatorReward);
-
-			emit ClosePosition(positionId, position.owner, position.productId, price, uint256(position.margin), uint256(position.leverage), -1 * int256(uint256(position.margin)), 0, true);
-
-			delete positions[positionId];
-
-			emit PositionLiquidated(positionId, msg.sender, vaultReward, liquidatorReward);
-
-		}
-
-	}
+	
 
 	function settlePositions(uint256[] calldata positionIds) external {
 

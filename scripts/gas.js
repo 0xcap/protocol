@@ -42,7 +42,12 @@ async function main() {
   // await hre.run('compile');
 
   const provider = hre.ethers.provider;
+
+  //const signer = new hre.ethers.Wallet('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d', provider);
+
   const signer = await provider.getSigner();
+
+  //signer.connect(provider);
 
   const account = await signer.getAddress();
   console.log('account', account);
@@ -81,14 +86,16 @@ async function main() {
   console.log('Added product ETH/USD');
 
   // Stake in vault
-  const tx1 = await trading.stake({value: parseUnits("100", 18)});
+  const tx1 = await trading.stake({value: parseUnits("10", 18)});
   const receipt1 = await provider.getTransactionReceipt(tx1.hash);
-  console.log('Staked 100 ETH', (receipt1.gasUsed).toNumber());
+  console.log('Staked 10 ETH', (receipt1.gasUsed).toNumber());
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // submit order
   const tx2 = await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10", 18)});
   const receipt2 = await provider.getTransactionReceipt(tx2.hash);
-  console.log('Submitted order long 10 ETH at 100x', (receipt2.gasUsed).toNumber());
+  console.log('Submitted order long 10 ETH margin at 50x', (receipt2.gasUsed).toNumber());
 
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
@@ -101,61 +108,50 @@ async function main() {
   const receipt3 = await provider.getTransactionReceipt(tx3.hash);
   console.log('Added 5 ETH margin',  (receipt3.gasUsed).toNumber());
 
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+
   const position = await trading.getPosition(1);
 
   console.log('Position', position);
   console.log('Info', formatUnits(position.price, 8), formatUnits(position.margin, 8));
-
-  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // close position partial (2)
   const tx5 = await trading.closePosition(1, parseUnits("2"), false);
   const receipt5 = await provider.getTransactionReceipt(tx5.hash);
   console.log('Closed 2 ETH partially', (receipt5.gasUsed).toNumber());
 
-  return
-
-  positions = await trading.getUserPositions(account);
-
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
-  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
-
-  // close remainder (13)
-  await trading.closePosition(1, parseUnits("13"), false);
-  console.log('Closed fully');
-
-  positions = await trading.getUserPositions(account);
-
-  console.log('Positions', positions);
-  //console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  console.log('Account balance', formatUnits(await provider.getBalance(account)));
-  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
 
   /*
-  // liquidate position
-  await trading.liquidatePosition(1);
-  console.log('liquidating');
+  // close remainder (13)
+  const tx6 = await trading.closePosition(1, parseUnits("13"), false);
+  const receipt6 = await provider.getTransactionReceipt(tx6.hash);
+  console.log('Closed fully', (receipt6.gasUsed).toNumber());
 
-  positions = await trading.getUserPositions(account, 1);
-  console.log('Positions', positions);
+  const position2 = await trading.getPosition(1);
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  console.log('Position2', position2);
+  console.log('Info', formatUnits(position2.price, 8), formatUnits(position2.margin, 8));
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
   */
 
+  // liquidate position
+  const tx7 = await trading.liquidatePosition(1);
+  const receipt7 = await provider.getTransactionReceipt(tx7.hash);
+  console.log('Liquidated', (receipt7.gasUsed).toNumber());
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+
   /*
-  // Unstake partial
+  // Redeem partial
   await trading.unstake(1, 2000 * 10**6);
   console.log('Unstake partial');
 
   console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
   console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
 
-  // Unstake remainder
+  // Redeem remainder
   await trading.unstake(1, 8000 * 10**6);
   console.log('Unstake remaining');
 
