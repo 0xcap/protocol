@@ -14,7 +14,7 @@ const fromBytes32 = function (string) {
 }
 
 const parseUnits = function (number, units) {
-  return ethers.utils.parseUnits(number, units || 18);
+  return ethers.utils.parseUnits(number, units || 8);
 }
 
 const formatUnits = function (number, units) {
@@ -44,14 +44,6 @@ async function main() {
   const provider = hre.ethers.provider;
   const signer = await provider.getSigner();
 
-  /*
-  await hre.ethers.provider.send('hardhat_setNonce', [
-    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-    "0x3b"
-  ]);
-  return;
-  */
-
   const account = await signer.getAddress();
   console.log('account', account);
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
@@ -62,129 +54,66 @@ async function main() {
   console.log("Cap Trading deployed to:", trading.address);
 
   await trading.updateVault([
-    parseUnits("10"), 
-    parseUnits("8000"),
+    parseUnits("1000"), 
     0,
     0,
     0,
-    0,
-    0,
-    25 * 100, 
     0,
     30 * 24 * 3600, 
     8 * 3600,
-    true
+    25 * 100
   ]);
   console.log('Updated vault');
 
   await trading.addProduct(1, [
-    parseUnits("50"), 
     chainlink_feeds[hre.network.name][1],
+    parseUnits("50"),
     0.05 * 100, 
+    true,
+    parseUnits("50000"),
+    0,
     5 * 100, 
     1 * 60, 
     0 * 60, 
     80 * 100, 
-    5 * 100, 
-    true
+    5 * 100
   ]);
   console.log('Added product ETH/USD');
 
-  await trading.addProduct(2, [
-    parseUnits("100"), 
-    chainlink_feeds[hre.network.name][2],
-    0.05 * 100, 
-    5 * 100, 
-    1 * 60, 
-    0 * 60, 
-    80 * 100, 
-    5 * 100, 
-    true
-  ]);
-  console.log('Added product BTC/USD');
-
-  if (chainlink_feeds[hre.network.name][3]) {
-    await trading.addProduct(3, [
-      parseUnits("50"), 
-      chainlink_feeds[hre.network.name][3],
-      0.02 * 100, 
-      5 * 100, 
-      1 * 60, 
-      0 * 60, 
-      80 * 100, 
-      5 * 100, 
-      true
-    ]);
-    console.log('Added product Gold');
-  }
-  
-  if (chainlink_feeds[hre.network.name][4]) {
-    await trading.addProduct(4, [
-      parseUnits("200"), 
-      chainlink_feeds[hre.network.name][4],
-      0.01 * 100, 
-      5 * 100, 
-      1 * 60, 
-      0 * 60, 
-      80 * 100, 
-      5 * 100, 
-      true
-    ]);
-    console.log('Added product EUR/USD');
-  }
-
-  return
-
-  // Below are method tests
-
-  //const randomWallet = await hre.ethers.Wallet.createRandom();
-  //console.log('Created random wallet', randomWallet);
-
   // Stake in vault
-  await trading.stake({value: parseUnits("100")});
-  console.log('Staked 100 ETH');
+  const tx1 = await trading.stake({value: parseUnits("100", 18)});
+  const receipt1 = await provider.getTransactionReceipt(tx1.hash);
+  console.log('Staked 100 ETH', (receipt1.gasUsed).toNumber());
 
   // submit order
-  await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10")});
-  console.log('Submitted order long 10 ETH at 100x');
-
-  let positions = await trading.getUserPositions(account);
-
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
+  const tx2 = await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10", 18)});
+  const receipt2 = await provider.getTransactionReceipt(tx2.hash);
+  console.log('Submitted order long 10 ETH at 100x', (receipt2.gasUsed).toNumber());
 
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
-  // settle open position
-  let settlingIds = await trading.checkPositionsToSettle();  
-  console.log('Settling Ids', settlingIds);
-
-  await trading.settlePositions(settlingIds);
-  console.log('Settling position open (perform)');
-
-  positions = await trading.getUserPositions(account);
-
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  settlingIds = await trading.checkPositionsToSettle();  
-  console.log('Settling Ids (2)', settlingIds);
+  const tx4 = await trading.settlePositions([1]);
+  const receipt4 = await provider.getTransactionReceipt(tx4.hash);
+  console.log('Settling position open (perform)', (receipt4.gasUsed).toNumber());
 
   // add margin
-  await trading.addMargin(1, {value: parseUnits("5")});
-  console.log('Added 5 ETH margin');
+  const tx3 = await trading.addMargin(1, {value: parseUnits("5", 18)});
+  const receipt3 = await provider.getTransactionReceipt(tx3.hash);
+  console.log('Added 5 ETH margin',  (receipt3.gasUsed).toNumber());
 
-  positions = await trading.getUserPositions(account);
+  const position = await trading.getPosition(1);
 
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
+  console.log('Position', position);
+  console.log('Info', formatUnits(position.price, 8), formatUnits(position.margin, 8));
 
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // close position partial (2)
-  await trading.closePosition(1, parseUnits("2"), false);
-  console.log('Closed 2 ETH partially');
+  const tx5 = await trading.closePosition(1, parseUnits("2"), false);
+  const receipt5 = await provider.getTransactionReceipt(tx5.hash);
+  console.log('Closed 2 ETH partially', (receipt5.gasUsed).toNumber());
+
+  return
 
   positions = await trading.getUserPositions(account);
 

@@ -12,11 +12,17 @@ library UintSet {
 
     function add(Set storage set, uint256 value) internal returns (bool) {
         if (!contains(set, value)) {
+            
+            // 47K gas
             set._values.push(value);
+
             // The value is stored at length-1, but we add 1 to all indexes
             // and use 0 as a sentinel value
+
+            // 20K gas
             set._indexes[value] = set._values.length;
             return true;
+            
         } else {
             return false;
         }
