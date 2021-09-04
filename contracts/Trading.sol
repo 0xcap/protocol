@@ -156,11 +156,9 @@ contract Trading {
 		console.log('amount', amount);
 		console.log('uint256(_stake.amount)', uint256(_stake.amount));
 
-		/* local test - UNCOMMENT IN PROD
 		uint256 blockTimestamp = block.timestamp;
 		uint256 stakeTimestamp = uint256(_stake.timestamp);
 		require((blockTimestamp - stakeTimestamp) % uint256(vault.stakingPeriod) < uint256(vault.redemptionPeriod), "!period");
-		*/
 		
 		bool isFullRedeem = amount >= uint256(_stake.amount);
 		uint256 amountToSend = amount * uint256(vault.balance) / uint256(vault.staked);
@@ -426,9 +424,6 @@ contract Trading {
 		uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
 		require(price > 0, "!price");
 
-		// !!! local test
-		price = 1350000000000;
-
 		if (_checkLiquidation(position, price, uint256(product.liquidationThreshold))) {
 
 			// Can be liquidated
@@ -466,6 +461,36 @@ contract Trading {
 
 	}
 
+	function canSettlePositions(uint256[] calldata positionIds) external view returns(uint256[] memory _positionIds) {
+
+		uint256 length = positionIds.length;
+		_positionIds = new uint256[](length);
+		
+		for (uint256 i = 0; i < length; i++) {
+		
+			uint256 positionId = positionIds[i];
+
+			Position storage position = positions[positionId];
+			if (!position.isSettling) continue;
+
+			Product storage product = products[position.productId];
+
+			uint256 price = _calculatePriceWithFee(product.feed, product.fee, position.isLong);
+
+			if (price > 0) {
+
+				if (block.timestamp - uint256(position.timestamp) > uint256(product.settlementTime) || price != uint256(position.price)) {
+					_positionIds[i] = positionId;
+				}
+
+			}
+
+		}
+
+		return _positionIds;
+
+	}
+
 	function settlePositions(uint256[] calldata positionIds) external {
 
 		uint256 length = positionIds.length;
@@ -489,8 +514,8 @@ contract Trading {
 				}
 
 				// !!! local test
-				position.price = uint64(price);
-				position.isSettling = false;
+				//position.price = uint64(price);
+				//position.isSettling = false;
 
 				emit NewPositionSettled(
 					positionId,
@@ -546,7 +571,7 @@ contract Trading {
 
 	function getLatestPrice(address feed, uint16 productId) public view returns (uint256) {
 		// local test
-		return 33500 * 10**8;
+		//return 33500 * 10**8;
 
 		if (productId > 0) { // for client
 			Product memory product = products[productId];
@@ -569,9 +594,6 @@ contract Trading {
 		} else {
 			price_returned = uint256(price);
 		}
-
-		// local test
-		//int256 price = 33500 * 10**8;
 		return price_returned;
 	}
 

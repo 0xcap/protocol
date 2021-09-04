@@ -14,7 +14,7 @@ const fromBytes32 = function (string) {
 }
 
 const parseUnits = function (number, units) {
-  return ethers.utils.parseUnits(number, units || 18);
+  return ethers.utils.parseUnits(number, units || 8);
 }
 
 const formatUnits = function (number, units) {
@@ -62,78 +62,86 @@ async function main() {
   console.log("Cap Trading deployed to:", trading.address);
 
   await trading.updateVault([
-    parseUnits("10"), 
-    parseUnits("8000"),
+    parseUnits("100"), 
     0,
     0,
     0,
-    0,
-    0,
-    25 * 100, 
     0,
     30 * 24 * 3600, 
     8 * 3600,
-    true
+    25 * 100
   ]);
   console.log('Updated vault');
 
   await trading.addProduct(1, [
-    parseUnits("50"), 
     chainlink_feeds[hre.network.name][1],
+    parseUnits("50"),
     0.05 * 100, 
+    true,
+    parseUnits("50000"),
+    0,
+    0,
     5 * 100, 
     1 * 60, 
     0 * 60, 
     80 * 100, 
-    5 * 100, 
-    true
+    5 * 100
   ]);
   console.log('Added product ETH/USD');
 
   await trading.addProduct(2, [
-    parseUnits("100"), 
     chainlink_feeds[hre.network.name][2],
+    parseUnits("100"),
     0.05 * 100, 
+    true,
+    parseUnits("50000"),
+    0,
+    0,
     5 * 100, 
     1 * 60, 
     0 * 60, 
     80 * 100, 
-    5 * 100, 
-    true
+    5 * 100
   ]);
   console.log('Added product BTC/USD');
 
   if (chainlink_feeds[hre.network.name][3]) {
     await trading.addProduct(3, [
-      parseUnits("50"), 
       chainlink_feeds[hre.network.name][3],
+      parseUnits("50"),
       0.02 * 100, 
+      true,
+      parseUnits("50000"),
+      0,
+      0,
       5 * 100, 
       1 * 60, 
       0 * 60, 
       80 * 100, 
-      5 * 100, 
-      true
+      5 * 100
     ]);
     console.log('Added product Gold');
   }
   
   if (chainlink_feeds[hre.network.name][4]) {
     await trading.addProduct(4, [
-      parseUnits("200"), 
       chainlink_feeds[hre.network.name][4],
+      parseUnits("200"),
       0.01 * 100, 
+      true,
+      parseUnits("50000"),
+      0,
+      0,
       5 * 100, 
       1 * 60, 
       0 * 60, 
       80 * 100, 
-      5 * 100, 
-      true
+      5 * 100
     ]);
     console.log('Added product EUR/USD');
   }
 
-  return
+  return;
 
   // Below are method tests
 
