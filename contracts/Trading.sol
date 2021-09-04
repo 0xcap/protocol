@@ -91,7 +91,7 @@ contract Trading {
 	event ProductUpdated(uint16 productId, Product product);
 
 	event Staked(uint256 stakeId, address indexed from, uint256 amount);
-	event Redeemed(uint256 stakeId, address indexed to, uint256 amount);
+	event Redeemed(uint256 stakeId, address indexed to, uint256 amount, bool isFullRedeem);
 
 	event NewPosition(uint256 positionId, address indexed user, uint64 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 positionId, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
@@ -145,24 +145,34 @@ contract Trading {
 
 	}
 
-	function redeem(uint256 stakeId, uint256 amount) external payable {
-		
+	function redeem(uint256 stakeId, uint256 amount) external {
+		// amount in 8 decimals
 		address user = msg.sender;
 		Stake storage _stake = stakes[stakeId];
 		require(_stake.owner == user, "!owner");
-		require(amount <= uint256(_stake.amount), "!amount");
 
+		if (amount >= uint256(_stake.amount)) amount = uint256(_stake.amount);
+
+		console.log('amount', amount);
+		console.log('uint256(_stake.amount)', uint256(_stake.amount));
+
+		/* local test - UNCOMMENT IN PROD
 		uint256 blockTimestamp = block.timestamp;
 		uint256 stakeTimestamp = uint256(_stake.timestamp);
 		require((blockTimestamp - stakeTimestamp) % uint256(vault.stakingPeriod) < uint256(vault.redemptionPeriod), "!period");
+		*/
 		
+		bool isFullRedeem = amount >= uint256(_stake.amount);
 		uint256 amountToSend = amount * uint256(vault.balance) / uint256(vault.staked);
+		
 		_stake.amount -= uint64(amount);
 		vault.staked -= uint64(amount);
 		vault.balance -= uint96(amountToSend);
 
+		if (isFullRedeem) delete stakes[stakeId];
+
 		payable(user).transfer(amountToSend * 10**10);
-		emit Redeemed(stakeId, user, amountToSend);
+		emit Redeemed(stakeId, user, amountToSend, isFullRedeem);
 
 	}
 
@@ -496,12 +506,22 @@ contract Trading {
 
 	// Getters
 
-	function getPosition(uint256 positionId) external view returns(Position memory) {
-		return positions[positionId];
+	function getPositions(uint256[] calldata positionIds) external view returns(Position[] memory _positions) {
+		uint256 length = positionIds.length;
+		_positions = new Position[](length);
+		for (uint256 i=0; i < length; i++) {
+			_positions[i] = positions[positionIds[i]];
+		}
+		return _positions;
 	}
 
-	function getStake(uint256 stakeId) external view returns(Stake memory) {
-		return stakes[stakeId];
+	function getStakes(uint256[] calldata stakeIds) external view returns(Stake[] memory _stakes) {
+		uint256 length = stakeIds.length;
+		_stakes = new Stake[](length);
+		for (uint256 i=0; i < length; i++) {
+			_stakes[i] = stakes[stakeIds[i]];
+		}
+		return _stakes;
 	}
 
 	function getVault() external view returns(Vault memory) {
@@ -515,7 +535,7 @@ contract Trading {
 	// Internal methods
 
 	function _calculatePriceWithFee(address feed, uint256 fee, bool isLong) internal view returns(uint256) {
-		uint256 price = _getLatestPrice(feed);
+		uint256 price = getLatestPrice(feed, 0);
 		if (price == 0) return 0;
 		if (isLong) {
 			return price + price * fee / 10**4;
@@ -524,7 +544,15 @@ contract Trading {
 		}
 	}
 
-	function _getLatestPrice(address feed) public view returns (uint256) {
+	function getLatestPrice(address feed, uint16 productId) public view returns (uint256) {
+		// local test
+		return 33500 * 10**8;
+
+		if (productId > 0) { // for client
+			Product memory product = products[productId];
+			feed = product.feed;
+		}
+		if (feed == address(0)) return 0;
 		// 2K gas
 		uint8 decimals = AggregatorV3Interface(feed).decimals();
 		// 12k gas

@@ -111,10 +111,10 @@ async function main() {
 
   console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
-  const position = await trading.getPosition(1);
+  const positions = await trading.getPositions([1]);
 
-  console.log('Position', position);
-  console.log('Info', formatUnits(position.price, 8), formatUnits(position.margin, 8));
+  console.log('Position', positions[0]);
+  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin, 8));
 
   // close position partial (2)
   const tx5 = await trading.closePosition(1, parseUnits("2"), false);
