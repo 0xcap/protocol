@@ -95,7 +95,7 @@ contract Trading {
 
 	event NewPosition(uint256 positionId, address indexed user, uint64 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 positionId, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
-	event ClosePosition(uint256 positionId, address indexed user, uint64 indexed productId, uint256 price, uint256 margin, uint256 leverage, uint256 pnl, bool pnlIsNegative, uint256 protocolFee, bool isFullClose, bool wasLiquidated);
+	event ClosePosition(uint256 positionId, address indexed user, uint64 indexed productId, uint256 price, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 pnl, bool pnlIsNegative, bool isFullClose, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 positionId, address indexed user, uint256 price);
 
@@ -211,7 +211,6 @@ contract Trading {
 		// Checks: price
 		// 20K gas
 		uint256 price = _calculatePriceWithFee(product.feed, product.fee, isLong);
-		require(price > 0, "!price");
 
 		// Create position
 		// 22K gas
@@ -297,13 +296,11 @@ contract Trading {
 		if (margin > uint256(position.margin)) margin = uint256(position.margin);
 
 		uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
-		require(price > 0, "!price");
 
 		// Close (full or partial)
 
 		uint256 pnl;
 		bool pnlIsNegative;
-		uint256 protocolFeeAmount;
 
 		// is liquidatable?
 		bool isLiquidatable = _checkLiquidation(position, price, uint256(product.liquidationThreshold));
@@ -343,7 +340,7 @@ contract Trading {
 
 			// calculate protocol fee
 			if (protocolFee > 0) {
-				protocolFeeAmount = protocolFee * (margin * position.leverage / 10**8) / 10**4;
+				uint256 protocolFeeAmount = protocolFee * (margin * position.leverage / 10**8) / 10**4;
 				payable(owner).transfer(protocolFeeAmount * 10**10);
 				if (pnlIsNegative) {
 					pnl += protocolFeeAmount;
@@ -399,11 +396,11 @@ contract Trading {
 			position.owner, 
 			position.productId, 
 			price, 
+			uint256(position.price),
 			margin, 
 			uint256(position.leverage), 
 			pnl, 
 			pnlIsNegative,
-			protocolFeeAmount, 
 			isFullClose, 
 			isLiquidatable
 		);
@@ -422,7 +419,6 @@ contract Trading {
 		Product memory product = products[position.productId];
 
 		uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
-		require(price > 0, "!price");
 
 		if (_checkLiquidation(position, price, uint256(product.liquidationThreshold))) {
 
@@ -439,11 +435,11 @@ contract Trading {
 				position.owner, 
 				position.productId, 
 				price, 
+				uint256(position.price),
 				uint256(position.margin), 
 				uint256(position.leverage), 
 				uint256(position.margin),
-				true, 
-				0, 
+				true,
 				true,
 				true
 			);
@@ -477,12 +473,8 @@ contract Trading {
 
 			uint256 price = _calculatePriceWithFee(product.feed, product.fee, position.isLong);
 
-			if (price > 0) {
-
-				if (block.timestamp - uint256(position.timestamp) > uint256(product.settlementTime) || price != uint256(position.price)) {
-					_positionIds[i] = positionId;
-				}
-
+			if (block.timestamp - uint256(position.timestamp) > uint256(product.settlementTime) || price != uint256(position.price)) {
+				_positionIds[i] = positionId;
 			}
 
 		}
@@ -506,24 +498,20 @@ contract Trading {
 
 			uint256 price = _calculatePriceWithFee(product.feed, product.fee, position.isLong);
 
-			if (price > 0) {
-
-				if (block.timestamp - uint256(position.timestamp) > uint256(product.settlementTime) || price != uint256(position.price)) {
-					position.price = uint64(price);
-					position.isSettling = false;
-				}
-
-				// !!! local test
-				//position.price = uint64(price);
-				//position.isSettling = false;
-
-				emit NewPositionSettled(
-					positionId,
-					position.owner,
-					price
-				);
-
+			if (block.timestamp - uint256(position.timestamp) > uint256(product.settlementTime) || price != uint256(position.price)) {
+				position.price = uint64(price);
+				position.isSettling = false;
 			}
+
+			// !!! local test
+			//position.price = uint64(price);
+			//position.isSettling = false;
+
+			emit NewPositionSettled(
+				positionId,
+				position.owner,
+				price
+			);
 
 		}
 
@@ -561,7 +549,6 @@ contract Trading {
 
 	function _calculatePriceWithFee(address feed, uint256 fee, bool isLong) internal view returns(uint256) {
 		uint256 price = getLatestPrice(feed, 0);
-		if (price == 0) return 0;
 		if (isLong) {
 			return price + price * fee / 10**4;
 		} else {
@@ -577,17 +564,27 @@ contract Trading {
 			Product memory product = products[productId];
 			feed = product.feed;
 		}
-		if (feed == address(0)) return 0;
+
+		require(feed != address(0), '!feed-error');
+
 		// 2K gas
 		uint8 decimals = AggregatorV3Interface(feed).decimals();
+		require(uint256(decimals) <= 18, '!decimals');
+
 		// 12k gas
 		// standardize price to 8 decimals
 		(
-			, 
-			int price,
-			,
-			,
+			uint80 roundID, 
+            int price,
+            uint startedAt,
+            uint timeStamp,
+            uint80 answeredInRound
 		) = AggregatorV3Interface(feed).latestRoundData();
+
+		require(price > 0, '!price');
+		require(startedAt > 0, '!startedAt');
+		require(timeStamp > 0, '!timeStamp');
+
 		uint256 price_returned;
 		if (decimals != 8) {
 			price_returned = uint256(price) * (10**8) / (10**uint256(decimals));
@@ -595,6 +592,7 @@ contract Trading {
 			price_returned = uint256(price);
 		}
 		return price_returned;
+
 	}
 
 	function _calculateInterest(uint256 amount, uint256 timestamp, uint256 interest) internal view returns (uint256) {
