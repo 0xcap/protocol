@@ -95,7 +95,7 @@ contract Trading {
 
 	event NewPosition(uint256 positionId, address indexed user, uint64 indexed productId, bool isLong, uint256 price, uint256 margin, uint256 leverage);
 	event AddMargin(uint256 positionId, address indexed user, uint256 margin, uint256 newMargin, uint256 newLeverage);
-	event ClosePosition(uint256 positionId, address indexed user, uint64 indexed productId, uint256 price, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 pnl, bool pnlIsNegative, bool isFullClose, bool wasLiquidated);
+	event ClosePosition(uint256 positionId, address indexed user, bool indexed isFullClose, uint64 indexed productId, uint256 price, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 pnl, bool pnlIsNegative, bool wasLiquidated);
 
 	event NewPositionSettled(uint256 positionId, address indexed user, uint256 price);
 
@@ -286,8 +286,7 @@ contract Trading {
 		require(position.margin > 0, "!position");
 		require(!position.isSettling, "!settling");
 
-		address user = msg.sender;
-		require(user == position.owner, "!owner");
+		require(msg.sender == position.owner, "!owner");
 
 		Product storage product = products[position.productId];
 
@@ -394,14 +393,14 @@ contract Trading {
 		emit ClosePosition(
 			positionId, 
 			position.owner, 
+			isFullClose,
 			position.productId, 
 			price, 
 			uint256(position.price),
 			margin, 
 			uint256(position.leverage), 
 			pnl, 
-			pnlIsNegative,
-			isFullClose, 
+			pnlIsNegative, 
 			isLiquidatable
 		);
 
@@ -411,48 +410,59 @@ contract Trading {
 
 	}
 
-	function liquidatePosition(uint256 positionId) external {
+	function liquidatePositions(uint256[] calldata positionIds) external {
 
-		Position memory position = positions[positionId];
-		require(!position.isSettling, "!settling");
+		uint256 length = positionIds.length;
+		uint256 liquidatorReward;
 
-		Product memory product = products[position.productId];
+		for (uint256 i = 0; i < length; i++) {
 
-		uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
+			uint256 positionId = positionIds[i];
+			Position memory position = positions[positionId];
+			require(!position.isSettling, "!settling");
 
-		if (_checkLiquidation(position, price, uint256(product.liquidationThreshold))) {
+			Product memory product = products[position.productId];
 
-			// Can be liquidated
-			uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 100;
-			uint256 liquidatorReward = uint256(position.margin) - vaultReward;
+			uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
 
-			vault.balance += uint96(vaultReward);
+			if (_checkLiquidation(position, price, uint256(product.liquidationThreshold))) {
 
+				// Can be liquidated
+				uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 100;
+				
+				liquidatorReward += uint256(position.margin) - vaultReward;
+
+				vault.balance += uint96(vaultReward);
+
+				emit ClosePosition(
+					positionId, 
+					position.owner, 
+					true,
+					position.productId, 
+					price, 
+					uint256(position.price),
+					uint256(position.margin), 
+					uint256(position.leverage), 
+					uint256(position.margin),
+					true,
+					true
+				);
+
+				delete positions[positionId];
+
+				emit PositionLiquidated(
+					positionId, 
+					msg.sender, 
+					uint256(vaultReward), 
+					uint256(liquidatorReward)
+				);
+
+			}
+
+		}
+
+		if (liquidatorReward > 0) {
 			payable(msg.sender).transfer(liquidatorReward);
-
-			emit ClosePosition(
-				positionId, 
-				position.owner, 
-				position.productId, 
-				price, 
-				uint256(position.price),
-				uint256(position.margin), 
-				uint256(position.leverage), 
-				uint256(position.margin),
-				true,
-				true,
-				true
-			);
-
-			delete positions[positionId];
-
-			emit PositionLiquidated(
-				positionId, 
-				msg.sender, 
-				uint256(vaultReward), 
-				uint256(liquidatorReward)
-			);
-
 		}
 
 	}
