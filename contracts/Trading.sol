@@ -696,7 +696,7 @@ contract Trading {
 
 	function _calculateInterest(uint256 amount, uint256 timestamp, uint256 interest) internal view returns (uint256) {
 		if (block.timestamp < uint256(timestamp) - 900) return 0;
-		return amount * (interest / 10**4) * (block.timestamp - timestamp) / 360 days;
+		return amount * interest * (block.timestamp - timestamp) / (10**4 * 360 days);
 	}
 
 	function _checkLiquidation(
