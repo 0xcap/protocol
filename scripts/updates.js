@@ -6,6 +6,14 @@
 const hre = require("hardhat");
 const { ethers } = require('hardhat');
 
+const parseUnits = function (number, units) {
+  return ethers.utils.parseUnits(number, units || 8);
+}
+
+const formatUnits = function (number, units) {
+  return ethers.utils.formatUnits(number, units || 18);
+}
+
 async function main() {
   // Hardhat always runs the compile task when running scripts with its command
   // line interface.
@@ -18,25 +26,85 @@ async function main() {
 
   console.log('signer', await signer.getAddress());
 
-  const address = '0x5F2fFc7883BD12604e0adf0403f9436D40386Ef4';
+  const address = '0x91e434e892381D30bd01E008F539fe8b76217973';
+
+  const products = {
+    rinkeby: [
+      {
+        id: 4, // XRP-USD
+        feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
+        leverage: 20,
+        fee: 0.05,
+        symbol: 'XRP-USD'
+      },
+      {
+        id: 5, // XAU-USD
+        feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
+        leverage: 50,
+        fee: 0.02,
+        symbol: 'XAU-USD',
+        longSettle: true
+      },
+      {
+        id: 6, // XAG-USD
+        feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
+        leverage: 50,
+        fee: 0.02,
+        symbol: 'XAG-USD',
+        longSettle: true
+      },
+      {
+        id: 7, // Oil-USD
+        feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
+        leverage: 50,
+        fee: 0.03,
+        symbol: 'Oil-USD',
+        longSettle: true
+      },
+      {
+        id: 8, // EUR-USD
+        feed: '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F',
+        leverage: 200,
+        fee: 0.01,
+        symbol: 'EUR-USD',
+        longSettle: true
+      },
+      {
+        id: 9, // GBP-USD
+        feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
+        leverage: 200,
+        fee: 0.01,
+        symbol: 'GBP-USD',
+        longSettle: true
+      }
+    ]
+  };
 
   const abi = [
-    "function updateVault(uint8 vaultId, tuple(address base, uint256 cap, uint256 maxOpenInterest, uint256 maxDailyDrawdown, uint256 stakingPeriod, uint256 redemptionPeriod, uint256 protocolFee, uint256 openInterest, uint256 balance, uint256 totalStaked, uint256 lastCheckpointBalance, uint256 lastCheckpointTime, uint256 frMinStaked, uint256 frMaxStaked, uint16 frMinRebate, uint16 frMaxRebate, bool isActive))",
-    "function updateProduct(uint16 productId, tuple(uint256 leverage, uint256 fee, uint256 interest, address feed, uint256 settlementTime, uint256 minTradeDuration, uint256 liquidationThreshold, uint256 liquidationBounty, bool isActive))"
+    "function addProduct(uint16 productId, tuple(address feed, uint64 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))"
   ];
   const trading = new hre.ethers.Contract(address, abi, signer);
 
   console.log("Trading address:", trading.address);
 
-  const USDC_address = '0xBbfacB66a6F3a73930a8b5483B37b05Be25Bf7fd';
+  for (const p of products[hre.network.name]) {
+    await trading.addProduct(p.id, [
+      p.feed,
+      parseUnits(""+p.leverage),
+      p.fee * 100, 
+      true,
+      parseUnits("50000"),
+      0,
+      0,
+      5 * 100, 
+      p.longSettle ? 72 * 3600 : 1 * 60, 
+      0 * 60, 
+      80 * 100, 
+      5 * 100
+    ], {gasLimit: 100000});
+    console.log('Added product ' + p.symbol);
+  }
 
-  //await trading.updateVault(1, [USDC_address, 4000000 * 10**6, 8000000000 * 10**6, 25 * 100, 30 * 24 * 3600, 8 * 3600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true]);
-  //console.log('updated usdc vault');
-
-  await trading.updateProduct(1, [50 * 10**6, 0.05 * 100, 5 * 100, '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612', 1 * 60, 0 * 60, 80 * 100, 5 * 100, true], {gasPrice: 5000000000 ,gasLimit: 2000000});
-
-  await trading.updateProduct(2, [100 * 10**6, 0.05 * 100, 5 * 100, '0x6ce185860a4963106506C203335A2910413708e9', 1 * 60, 0 * 60, 80 * 100, 5 * 100, true], {gasPrice: 5000000000 ,gasLimit: 2000000});
-  
 }
 
 // We recommend this pattern to be able to use async/await everywhere
