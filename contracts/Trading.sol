@@ -319,7 +319,6 @@ contract Trading {
 		// Check position
 		Position storage position = positions[positionId];
 		require(msg.sender == position.owner, "!owner");
-		require(!position.isSettling, "!settling");
 
 		// New position params
 		uint256 newMargin = uint256(position.margin) + margin;
@@ -708,9 +707,9 @@ contract Trading {
 		uint256 liquidationPrice;
 		
 		if (position.isLong) {
-			liquidationPrice = (price - price * uint256(liquidationThreshold) / 10**4 / (uint256(position.leverage) / 10**8));
+			liquidationPrice = (position.price - position.price * uint256(liquidationThreshold) / 10**4 / (uint256(position.leverage) / 10**8));
 		} else {
-			liquidationPrice = (price + price * uint256(liquidationThreshold) / 10**4 / (uint256(position.leverage) / 10**8));
+			liquidationPrice = (position.price + position.price * uint256(liquidationThreshold) / 10**4 / (uint256(position.leverage) / 10**8));
 		}
 
 		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
