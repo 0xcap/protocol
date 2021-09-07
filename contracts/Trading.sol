@@ -374,8 +374,9 @@ contract Trading {
 
 		if (isLiquidatable) {
 			margin = uint256(position.margin);
-			pnl = margin;
+			pnl = uint256(position.margin);
 			pnlIsNegative = true;
+			isFullClose = true;
 		} else {
 			
 			if (position.isLong) {
@@ -457,9 +458,17 @@ contract Trading {
 		}
 
 		if (position.isLong) {
-			product.openInterestLong -= uint48(margin * uint256(position.leverage) / 10**8);
+			if (uint256(product.openInterestLong) >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestLong -= uint48(margin * uint256(position.leverage) / 10**8);
+			} else {
+				product.openInterestLong = 0;
+			}
 		} else {
-			product.openInterestShort -= uint48(margin * uint256(position.leverage) / 10**8);
+			if (uint256(product.openInterestShort) >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestShort -= uint48(margin * uint256(position.leverage) / 10**8);
+			} else {
+				product.openInterestShort = 0;
+			}
 		}
 
 		emit ClosePosition(
