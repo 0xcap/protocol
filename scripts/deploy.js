@@ -26,6 +26,15 @@ function sleep(ms) {
 }
 
 const products = {
+  localhost: [
+    {
+      id: 1, // ETH-USD
+      feed: '0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419',
+      leverage: 50,
+      fee: 0.05,
+      symbol: 'ETH-USD'
+    }
+  ],
   rinkeby: [
     {
       id: 1, // ETH-USD

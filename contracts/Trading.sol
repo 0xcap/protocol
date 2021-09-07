@@ -210,14 +210,16 @@ contract Trading {
 			amount = uint256(_stake.amount);
 		}
 
-		uint256 timeDiff = block.timestamp - uint256(_stake.timestamp);
-		require(
-			(timeDiff > uint256(vault.stakingPeriod)) &&
-			(timeDiff % uint256(vault.stakingPeriod)) < uint256(vault.redemptionPeriod)
-		, "!period");
-		
+		if (user != owner) {
+			uint256 timeDiff = block.timestamp - uint256(_stake.timestamp);
+			require(
+				(timeDiff > uint256(vault.stakingPeriod)) &&
+				(timeDiff % uint256(vault.stakingPeriod)) < uint256(vault.redemptionPeriod)
+			, "!period");
+		}
+
 		uint256 amountBalance = amount * uint256(vault.balance) / uint256(vault.staked);
-		
+
 		_stake.amount -= uint64(amount);
 		vault.staked -= uint64(amount);
 		vault.balance -= uint96(amountBalance);
@@ -578,6 +580,9 @@ contract Trading {
 
 			uint256 price = _calculatePriceWithFee(product.feed, product.fee, !position.isLong);
 
+			// Local test
+			// price = 20000*10**8;
+
 			if (_checkLiquidation(position, price, product.liquidationThreshold)) {
 
 				uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 10**4;
@@ -651,6 +656,9 @@ contract Trading {
 		address feed, 
 		uint16 productId
 	) public view returns (uint256) {
+
+		// local test
+		//return 33500 * 10**8;
 
 		if (productId > 0) { // for client
 			Product memory product = products[productId];
