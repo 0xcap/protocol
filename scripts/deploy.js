@@ -13,15 +13,243 @@ const fromBytes32 = function (string) {
   return ethers.utils.parseBytes32String(string);
 }
 
+const parseUnits = function (number, units) {
+  return ethers.utils.parseUnits(number, units || 8);
+}
+
 const formatUnits = function (number, units) {
-  if (!units) units = 6; // usdc
-  return ethers.utils.formatUnits(number, units);
+  return ethers.utils.formatUnits(number, units || 18);
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const products = {
+  localhost: [
+    {
+      id: 1, // ETH-USD
+      feed: '0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419',
+      leverage: 50,
+      fee: 0.05,
+      symbol: 'ETH-USD'
+    }
+  ],
+  rinkeby: [
+    {
+      id: 1, // ETH-USD
+      feed: '0x8A753747A1Fa494EC906cE90E9f37563A8AF630e',
+      leverage: 50,
+      fee: 0.05,
+      symbol: 'ETH-USD'
+    },
+    {
+      id: 2, // BTC-USD
+      feed: '0xECe365B379E1dD183B20fc5f022230C044d51404',
+      leverage: 100,
+      fee: 0.05,
+      symbol: 'BTC-USD'
+    },
+    {
+      id: 3, // LINK-USD
+      feed: '0xd8bD0a1cB028a31AA859A21A3758685a95dE4623',
+      leverage: 30,
+      fee: 0.05,
+      symbol: 'LINK-USD'
+    },
+    {
+      id: 4, // XRP-USD
+      feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
+      leverage: 20,
+      fee: 0.05,
+      symbol: 'XRP-USD'
+    },
+    {
+      id: 5, // XAU-USD
+      feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
+      leverage: 50,
+      fee: 0.02,
+      symbol: 'XAU-USD',
+      longSettle: true
+    },
+    {
+      id: 6, // XAG-USD
+      feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
+      leverage: 50,
+      fee: 0.02,
+      symbol: 'XAG-USD',
+      longSettle: true
+    },
+    {
+      id: 7, // Oil-USD
+      feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
+      leverage: 50,
+      fee: 0.03,
+      symbol: 'Oil-USD',
+      longSettle: true
+    },
+    {
+      id: 8, // EUR-USD
+      feed: '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F',
+      leverage: 200,
+      fee: 0.01,
+      symbol: 'EUR-USD',
+      longSettle: true
+    },
+    {
+      id: 9, // GBP-USD
+      feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
+      leverage: 200,
+      fee: 0.01,
+      symbol: 'GBP-USD',
+      longSettle: true
+    },
+    {
+      id: 10, // JPY-USD
+      feed: '0x3Ae2F46a2D84e3D5590ee6Ee5116B80caF77DeCA',
+      leverage: 200,
+      fee: 0.01,
+      symbol: 'JPY-USD',
+      longSettle: true
+    },
+    {
+      id: 11, // CHF-USD
+      feed: '0x5e601CF5EF284Bcd12decBDa189479413284E1d2',
+      leverage: 200,
+      fee: 0.01,
+      symbol: 'CHF-USD',
+      longSettle: true
+    },
+    {
+      id: 12, // AUD-USD
+      feed: '0x21c095d2aDa464A294956eA058077F14F66535af',
+      leverage: 200,
+      fee: 0.01,
+      symbol: 'AUD-USD',
+      longSettle: true
+    }
+  ],
+  arbitrum: [
+    {
+      id: 1, // ETH-USD
+      feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
+      leverage: 50,
+      fee: 0.15,
+      symbol: 'ETH-USD'
+    },
+    {
+      id: 2, // BTC-USD
+      feed: '0x6ce185860a4963106506C203335A2910413708e9',
+      leverage: 100,
+      fee: 0.15,
+      symbol: 'BTC-USD'
+    },
+    {
+      id: 3, // LINK-USD
+      feed: '0x86E53CF1B870786351Da77A57575e79CB55812CB',
+      leverage: 30,
+      fee: 0.25,
+      symbol: 'LINK-USD'
+    },
+    //{
+    //  id: 4, // XRP-USD
+    //  feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
+    //  leverage: 20,
+    //  fee: 0.05,
+    //  symbol: 'XRP-USD'
+    //},
+    //{
+    //  id: 5, // XAU-USD
+    //  feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
+    //  leverage: 50,
+    //  fee: 0.02,
+    //  symbol: 'XAU-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 6, // XAG-USD
+    //  feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
+    //  leverage: 50,
+    //  fee: 0.02,
+    //  symbol: 'XAG-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 7, // Oil-USD
+    //  feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
+    //  leverage: 50,
+    //  fee: 0.03,
+    //  symbol: 'Oil-USD',
+    //  longSettle: true
+    //},
+    {
+      id: 8, // EUR-USD
+      feed: '0xA14d53bC1F1c0F31B4aA3BD109344E5009051a84',
+      leverage: 200,
+      fee: 0.05,
+      symbol: 'EUR-USD',
+      longSettle: true
+    },
+    //{
+    //  id: 9, // GBP-USD
+    //  feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'GBP-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 10, // JPY-USD
+    //  feed: '0x3Ae2F46a2D84e3D5590ee6Ee5116B80caF77DeCA',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'JPY-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 11, // CHF-USD
+    //  feed: '0x5e601CF5EF284Bcd12decBDa189479413284E1d2',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'CHF-USD',
+    //  longSettle: true
+    //},
+    {
+      id: 12, // AUD-USD
+      feed: '0x9854e9a850e7C354c1de177eA953a6b1fba8Fc22',
+      leverage: 100,
+      fee: 0.1,
+      symbol: 'AUD-USD',
+      longSettle: true
+    },
+    {
+      id: 13, // KRW-USD
+      feed: '0x85bb02E0Ae286600d1c68Bb6Ce22Cc998d411916',
+      leverage: 50,
+      fee: 0.1,
+      symbol: 'KRW-USD',
+      longSettle: true
+    },
+    {
+      id: 14, // PHP-USD
+      feed: '0xfF82AAF635645fD0bcc7b619C3F28004cDb58574',
+      leverage: 50,
+      fee: 0.1,
+      symbol: 'PHP-USD',
+      longSettle: true
+    },
+    //{
+    //  id: 15, // CNY-USD
+    //  feed: '0xcC3370Bde6AFE51e1205a5038947b9836371eCCb',
+    //  leverage: 50,
+    //  fee: 0.1,
+    //  symbol: 'CNY-USD',
+    //  longSettle: true
+    //},
+  ]
+};
+
+/*
 const chainlink_feeds = { 
   localhost: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c', '0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6', '0xb49f677943BC038e9857d61E7d053CaA2C1734C1'], // same as mainnet because forked from it. // ETH-USD, BTC-USD, Gold, EUR/USD
   mainnet: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'],
@@ -29,6 +257,7 @@ const chainlink_feeds = {
   arbitrum_rinkeby: [,'0x0c9973e7a27d00e656B9f153348dA46CaD70d03d', '0x5f0423B1a6935dc5596e7A24d98532b67A0AeFd8'],// ETH-USD, BTC-USD
   arbitrum: [, '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612', '0x6ce185860a4963106506C203335A2910413708e9', null, '0xA14d53bC1F1c0F31B4aA3BD109344E5009051a84']// ETH-USD, BTC-USD, , EUR/USD
 }
+*/
 
 async function main() {
   // Hardhat always runs the compile task when running scripts with its command
@@ -38,7 +267,8 @@ async function main() {
   // manually to make sure everything is compiled
   // await hre.run('compile');
 
-  const signer = await hre.ethers.provider.getSigner();
+  const provider = hre.ethers.provider;
+  const signer = await provider.getSigner();
 
   /*
   await hre.ethers.provider.send('hardhat_setNonce', [
@@ -50,136 +280,140 @@ async function main() {
 
   const account = await signer.getAddress();
   console.log('account', account);
-
-  // Mint USDC Mock
-  const USDC = await hre.ethers.getContractFactory("USDCMock");
-  const usdc = await USDC.deploy();
-  await usdc.deployed();
-  console.log("USDC deployed to:", usdc.address);
-
-  // USDC address
-  const base = usdc.address;
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   const Trading = await hre.ethers.getContractFactory("Trading");
   const trading = await Trading.deploy();
   await trading.deployed();
   console.log("Cap Trading deployed to:", trading.address);
 
-  await trading.addVault(1, [base, 4000000 * 10**6, 8000000000 * 10**6, 25 * 100, 30 * 24 * 3600, 8 * 3600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true]);
-  console.log('Added vault USDC');
+  await trading.updateVault([
+    parseUnits("2"), 
+    0,
+    0,
+    0,
+    0,
+    30 * 24 * 3600, 
+    8 * 3600,
+    15 * 100
+  ]);
+  console.log('Updated vault');
 
-  await trading.addProduct(1, [50 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][1], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
-  console.log('Added product ETH/USD');
-
-  await trading.addProduct(2, [100 * 10**6, 0.05 * 100, 5 * 100, chainlink_feeds[hre.network.name][2], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
-  console.log('Added product BTC/USD');
-
-  if (chainlink_feeds[hre.network.name][3]) {
-    await trading.addProduct(3, [50 * 10**6, 0.02 * 100, 5 * 100, chainlink_feeds[hre.network.name][3], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
-    console.log('Added product Gold');
-  }
+  const network = hre.network.name;
+  console.log('network', network);
   
-  if (chainlink_feeds[hre.network.name][4]) {
-    await trading.addProduct(4, [200 * 10**6, 0.01 * 100, 5 * 100, chainlink_feeds[hre.network.name][4], 1 * 60, 0 * 60, 80 * 100, 5 * 100, true]);
-    console.log('Added product EUR/USD');
+  for (const p of products[network]) {
+    await trading.addProduct(p.id, [
+      p.feed,
+      parseUnits(""+p.leverage),
+      p.fee * 100, 
+      true,
+      parseUnits("1000"),
+      0,
+      0,
+      7 * 100, 
+      p.longSettle ? 72 * 3600 : 2 * 60, 
+      2 * 60, 
+      80 * 100, 
+      5 * 100
+    ]);
+    console.log('Added product ' + p.symbol);
   }
 
+  /*
+  const p = products[network][0];
+
+  console.log('p', p);
+
+  await trading.updateProduct(p.id, [
+    p.feed,
+    parseUnits(""+p.leverage),
+    p.fee * 100, 
+    true,
+    parseUnits("22000"),
+    0,
+    0,
+    6 * 100, 
+    p.longSettle ? 72 * 3600 : 1 * 60, 
+    1 * 60, 
+    83 * 100, 
+    6 * 100
+  ]);
+  console.log('Updated product ' + p.symbol);
+  */
+
+  return;
+
+  // Below are method tests
 
   //const randomWallet = await hre.ethers.Wallet.createRandom();
   //console.log('Created random wallet', randomWallet);
 
-  await usdc.mint(account, 10000000 * 10**6);
-  console.log('Minted USDC to', account, (await usdc.balanceOf(account)).toNumber());
-
-  //await usdc.approve(trading.address, 10000000 * 10**6);
-  //console.log('Approved Trading contract to spend USDC');
-
   // Stake in vault
-  //await trading.stake(1, 10000 * 10**6);
-  //console.log('Staked', 10000);
-
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-
-  return;
-  // below this are local tests, not needing for client interaction
-
-  //await usdc.transfer(randomWallet.address, 2000 * 10**6);
-  //console.log((await usdc.balanceOf(randomWallet.address)).toNumber());
-
-  // deposit
-  /*
-  console.log('h');
-  await trading.deposit(base, 1000 * 10**6);
-  console.log('g');
-  console.log('Deposited 1000 USDC. Balance:', formatUnits(await mu.balances(account, base)));
-  console.log('y');
-
-  // withdraw
-  await mu.withdraw(base, 300 * 10**6);
-  console.log('Withdrew 300 USDC. Balance:', formatUnits(await mu.balances(account, base)));
-  */
+  await trading.stake({value: parseUnits("100")});
+  console.log('Staked 100 ETH');
 
   // submit order
-  await trading.submitOrder(1, 1, true, 0, 100 * 10**6, 10 * 10**6, false);
-  console.log('Submitted order');
+  await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10")});
+  console.log('Submitted order long 10 ETH at 100x');
 
-  let positions = await trading.getUserPositions(account, 1);
+  let positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
   // settle open position
-  let settlingIds = await trading.checkSettlement();  
+  let settlingIds = await trading.checkPositionsToSettle();  
   console.log('Settling Ids', settlingIds);
 
-  await trading.performSettlement(settlingIds);
+  await trading.settlePositions(settlingIds);
   console.log('Settling position open (perform)');
 
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  settlingIds = await trading.checkSettlement();  
+  settlingIds = await trading.checkPositionsToSettle();  
   console.log('Settling Ids (2)', settlingIds);
 
   // add margin
-  await trading.submitOrder(1, 1, true, 1, 50 * 10**6, 1, false);
-  console.log('Added margin');
+  await trading.addMargin(1, {value: parseUnits("5")});
+  console.log('Added 5 ETH margin');
 
-  positions = await trading.getUserPositions(account, 1);
-
-  console.log('Positions', positions);
-  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-
-  // close position partial (25)
-  await trading.submitOrder(1, 1, false, 1, 25 * 10**6, 1, false);
-  console.log('Closed partially');
-
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
 
-  // close remainder (125)
-  await trading.submitOrder(1, 1, false, 1, 125 * 10**6, 1, false);
+  // close position partial (2)
+  await trading.closePosition(1, parseUnits("2"), false);
+  console.log('Closed 2 ETH partially');
 
+  positions = await trading.getUserPositions(account);
+
+  console.log('Positions', positions);
+  console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
+
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
+
+  // close remainder (13)
+  await trading.closePosition(1, parseUnits("13"), false);
   console.log('Closed fully');
 
-  positions = await trading.getUserPositions(account, 1);
+  positions = await trading.getUserPositions(account);
 
   console.log('Positions', positions);
   //console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
 
-  console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
+  console.log('Account balance', formatUnits(await provider.getBalance(account)));
+  console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
 
   /*
   // liquidate position

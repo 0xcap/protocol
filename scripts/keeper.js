@@ -18,24 +18,20 @@ async function main() {
 
   console.log('signer', await signer.getAddress());
 
-  const address = '0xBEc49fA140aCaA83533fB00A2BB19bDdd0290f25';
+  const address = '0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650';
   const abi = [
-    "function checkPositionsToSettle() view returns(uint256[] memory)",
+    "function canSettlePositions(uint256[] calldata) view returns(uint256[] memory _positionIds)",
     "function settlePositions(uint256[] calldata)"
   ];
   const trading = new hre.ethers.Contract(address, abi, signer);
 
   console.log("Trading address:", trading.address);
 
-  setInterval(async () => {
-    let settleTheseIds = await trading.checkPositionsToSettle();
-    console.log('settleTheseIds:', settleTheseIds);
+  const idsToSettle = await trading.canSettlePositions([1]);
+  console.log('idsToSettle', idsToSettle);
 
-    if (settleTheseIds.length > 0) {
-      await trading.settlePositions(settleTheseIds);
-      console.log('Settled ids');
-    }
-  }, 5000);
+  //await trading.settlePositions([1]);
+  //console.log('Settled ids');
   
 }
 
