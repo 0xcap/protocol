@@ -128,6 +128,124 @@ const products = {
       symbol: 'AUD-USD',
       longSettle: true
     }
+  ],
+  mainnet: [
+    {
+      id: 1, // ETH-USD
+      feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
+      leverage: 50,
+      fee: 0.15,
+      symbol: 'ETH-USD'
+    },
+    {
+      id: 2, // BTC-USD
+      feed: '0x6ce185860a4963106506C203335A2910413708e9',
+      leverage: 100,
+      fee: 0.15,
+      symbol: 'BTC-USD'
+    },
+    {
+      id: 3, // LINK-USD
+      feed: '0x86E53CF1B870786351Da77A57575e79CB55812CB',
+      leverage: 30,
+      fee: 0.25,
+      symbol: 'LINK-USD'
+    },
+    //{
+    //  id: 4, // XRP-USD
+    //  feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
+    //  leverage: 20,
+    //  fee: 0.05,
+    //  symbol: 'XRP-USD'
+    //},
+    //{
+    //  id: 5, // XAU-USD
+    //  feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
+    //  leverage: 50,
+    //  fee: 0.02,
+    //  symbol: 'XAU-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 6, // XAG-USD
+    //  feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
+    //  leverage: 50,
+    //  fee: 0.02,
+    //  symbol: 'XAG-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 7, // Oil-USD
+    //  feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
+    //  leverage: 50,
+    //  fee: 0.03,
+    //  symbol: 'Oil-USD',
+    //  longSettle: true
+    //},
+    {
+      id: 8, // EUR-USD
+      feed: '0xA14d53bC1F1c0F31B4aA3BD109344E5009051a84',
+      leverage: 200,
+      fee: 0.05,
+      symbol: 'EUR-USD',
+      longSettle: true
+    },
+    //{
+    //  id: 9, // GBP-USD
+    //  feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'GBP-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 10, // JPY-USD
+    //  feed: '0x3Ae2F46a2D84e3D5590ee6Ee5116B80caF77DeCA',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'JPY-USD',
+    //  longSettle: true
+    //},
+    //{
+    //  id: 11, // CHF-USD
+    //  feed: '0x5e601CF5EF284Bcd12decBDa189479413284E1d2',
+    //  leverage: 200,
+    //  fee: 0.01,
+    //  symbol: 'CHF-USD',
+    //  longSettle: true
+    //},
+    {
+      id: 12, // AUD-USD
+      feed: '0x9854e9a850e7C354c1de177eA953a6b1fba8Fc22',
+      leverage: 100,
+      fee: 0.1,
+      symbol: 'AUD-USD',
+      longSettle: true
+    },
+    {
+      id: 13, // KRW-USD
+      feed: '0x85bb02E0Ae286600d1c68Bb6Ce22Cc998d411916',
+      leverage: 50,
+      fee: 0.1,
+      symbol: 'KRW-USD',
+      longSettle: true
+    },
+    {
+      id: 14, // PHP-USD
+      feed: '0xfF82AAF635645fD0bcc7b619C3F28004cDb58574',
+      leverage: 50,
+      fee: 0.1,
+      symbol: 'PHP-USD',
+      longSettle: true
+    },
+    {
+      id: 14, // CNY-USD
+      feed: '0xcC3370Bde6AFE51e1205a5038947b9836371eCCb',
+      leverage: 50,
+      fee: 0.1,
+      symbol: 'CNY-USD',
+      longSettle: true
+    },
   ]
 };
 
@@ -170,14 +288,14 @@ async function main() {
   console.log("Cap Trading deployed to:", trading.address);
 
   await trading.updateVault([
-    parseUnits("100"), 
+    parseUnits("5"), 
     0,
     0,
     0,
     0,
     30 * 24 * 3600, 
     8 * 3600,
-    25 * 100
+    15 * 100
   ]);
   console.log('Updated vault');
 
@@ -190,18 +308,19 @@ async function main() {
       parseUnits(""+p.leverage),
       p.fee * 100, 
       true,
-      parseUnits("50000"),
+      parseUnits("1000"),
       0,
       0,
-      5 * 100, 
-      p.longSettle ? 72 * 3600 : 1 * 60, 
-      0 * 60, 
+      7 * 100, 
+      p.longSettle ? 72 * 3600 : 3 * 60, 
+      3 * 60, 
       80 * 100, 
       5 * 100
     ]);
     console.log('Added product ' + p.symbol);
   }
 
+  /*
   const p = products[network][0];
 
   console.log('p', p);
@@ -221,6 +340,7 @@ async function main() {
     6 * 100
   ]);
   console.log('Updated product ' + p.symbol);
+  */
 
   return;
 
