@@ -570,7 +570,7 @@ contract Trading {
 				continue;
 			}
 
-			Product memory product = products[uint256(position.productId)];
+			Product storage product = products[uint256(position.productId)];
 
 			uint256 price = _calculatePriceWithFee(product.feed, uint256(product.fee), !position.isLong);
 
@@ -584,6 +584,22 @@ contract Trading {
 
 				uint256 liquidatorReward = uint256(position.margin) - vaultReward;
 				totalLiquidatorReward += liquidatorReward;
+
+				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
+
+				if (position.isLong) {
+					if (uint256(product.openInterestLong) >= amount) {
+						product.openInterestLong -= uint48(amount);
+					} else {
+						product.openInterestLong = 0;
+					}
+				} else {
+					if (uint256(product.openInterestShort) >= amount) {
+						product.openInterestShort -= uint48(amount);
+					} else {
+						product.openInterestShort = 0;
+					}
+				}
 
 				emit ClosePosition(
 					positionId, 
