@@ -1,3 +1,4 @@
+/*
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
 
@@ -178,14 +179,6 @@ describe("Trading", () => {
 					expect(position.leverage).to.equal(leverage);
 					expect(position.price).to.equal(priceWithFee);
 
-					// Check open interest
-					// get vault for this
-					/*
-					amountSum += parseInt(position.margin * position.leverage / 10**6);
-					const oi = await Trading.getCurrentOpenInterest(baseId);
-					expect(oi).to.equal(amountSum);
-					*/
-
 				});
 			
 			});
@@ -211,3 +204,4 @@ describe("Trading", () => {
 	// for each method have a describe block testing each case (good, error cases, and events emitted, balances changed)
 
 });
+*/

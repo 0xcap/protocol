@@ -181,7 +181,10 @@ async function main() {
   ]);
   console.log('Updated vault');
 
-  for (const p of products[hre.network.name]) {
+  const network = hre.network.name;
+  console.log('network', network);
+  
+  for (const p of products[network]) {
     await trading.addProduct(p.id, [
       p.feed,
       parseUnits(""+p.leverage),
@@ -198,6 +201,26 @@ async function main() {
     ]);
     console.log('Added product ' + p.symbol);
   }
+
+  const p = products[network][0];
+
+  console.log('p', p);
+
+  await trading.updateProduct(p.id, [
+    p.feed,
+    parseUnits(""+p.leverage),
+    p.fee * 100, 
+    true,
+    parseUnits("22000"),
+    0,
+    0,
+    6 * 100, 
+    p.longSettle ? 72 * 3600 : 1 * 60, 
+    1 * 60, 
+    83 * 100, 
+    6 * 100
+  ]);
+  console.log('Updated product ' + p.symbol);
 
   return;
 
