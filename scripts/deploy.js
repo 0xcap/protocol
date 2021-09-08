@@ -129,7 +129,7 @@ const products = {
       longSettle: true
     }
   ],
-  mainnet: [
+  arbitrum: [
     {
       id: 1, // ETH-USD
       feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
@@ -238,14 +238,14 @@ const products = {
       symbol: 'PHP-USD',
       longSettle: true
     },
-    {
-      id: 14, // CNY-USD
-      feed: '0xcC3370Bde6AFE51e1205a5038947b9836371eCCb',
-      leverage: 50,
-      fee: 0.1,
-      symbol: 'CNY-USD',
-      longSettle: true
-    },
+    //{
+    //  id: 15, // CNY-USD
+    //  feed: '0xcC3370Bde6AFE51e1205a5038947b9836371eCCb',
+    //  leverage: 50,
+    //  fee: 0.1,
+    //  symbol: 'CNY-USD',
+    //  longSettle: true
+    //},
   ]
 };
 
@@ -288,7 +288,7 @@ async function main() {
   console.log("Cap Trading deployed to:", trading.address);
 
   await trading.updateVault([
-    parseUnits("5"), 
+    parseUnits("2"), 
     0,
     0,
     0,
@@ -312,8 +312,8 @@ async function main() {
       0,
       0,
       7 * 100, 
-      p.longSettle ? 72 * 3600 : 3 * 60, 
-      3 * 60, 
+      p.longSettle ? 72 * 3600 : 2 * 60, 
+      2 * 60, 
       80 * 100, 
       5 * 100
     ]);
