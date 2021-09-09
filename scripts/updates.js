@@ -26,62 +26,44 @@ async function main() {
 
   console.log('signer', await signer.getAddress());
 
-  const address = '0x91e434e892381D30bd01E008F539fe8b76217973';
+  const address = '0x9BC357bc5b312AaCD41a84F3C687F031B8786853';
 
   const products = {
-    rinkeby: [
+    arbitrum: [
+      //{
+      //  id: 16,
+      //  feed: '0xaD1d5344AaDE45F43E596773Bcc4c423EAbdD034',
+      //  leverage: 20,
+      //  fee: 0.25,
+      //  symbol: 'AAVE-USD'
+      //},
       {
-        id: 4, // XRP-USD
-        feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
+        id: 17,
+        feed: '0xb2A8BA74cbca38508BA1632761b56C897060147C',
         leverage: 20,
-        fee: 0.05,
-        symbol: 'XRP-USD'
+        fee: 0.25,
+        symbol: 'SUSHI-USD'
       },
       {
-        id: 5, // XAU-USD
-        feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
-        leverage: 50,
-        fee: 0.02,
-        symbol: 'XAU-USD',
-        longSettle: true
+        id: 18,
+        feed: '0x9C917083fDb403ab5ADbEC26Ee294f6EcAda2720',
+        leverage: 20,
+        fee: 0.25,
+        symbol: 'UNI-USD'
       },
       {
-        id: 6, // XAG-USD
-        feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
-        leverage: 50,
-        fee: 0.02,
-        symbol: 'XAG-USD',
-        longSettle: true
+        id: 19,
+        feed: '0x745Ab5b69E01E2BE1104Ca84937Bb71f96f5fB21',
+        leverage: 10,
+        fee: 0.25,
+        symbol: 'YFI-USD'
       },
-      {
-        id: 7, // Oil-USD
-        feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
-        leverage: 50,
-        fee: 0.03,
-        symbol: 'Oil-USD',
-        longSettle: true
-      },
-      {
-        id: 8, // EUR-USD
-        feed: '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F',
-        leverage: 200,
-        fee: 0.01,
-        symbol: 'EUR-USD',
-        longSettle: true
-      },
-      {
-        id: 9, // GBP-USD
-        feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
-        leverage: 200,
-        fee: 0.01,
-        symbol: 'GBP-USD',
-        longSettle: true
-      }
     ]
   };
 
   const abi = [
-    "function addProduct(uint16 productId, tuple(address feed, uint64 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))"
+    "function addProduct(uint256 productId, tuple(address feed, uint72 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))",
+    "function updateProduct(uint256 productId, tuple(address feed, uint72 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))"
   ];
   const trading = new hre.ethers.Contract(address, abi, signer);
 
@@ -93,17 +75,37 @@ async function main() {
       parseUnits(""+p.leverage),
       p.fee * 100, 
       true,
-      parseUnits("50000"),
+      parseUnits("200"),
       0,
       0,
-      5 * 100, 
-      p.longSettle ? 72 * 3600 : 1 * 60, 
-      0 * 60, 
+      12 * 100, 
+      p.longSettle ? 72 * 3600 : 2 * 60, 
+      2 * 60, 
       80 * 100, 
       5 * 100
-    ], {gasLimit: 100000});
+    ]);
     console.log('Added product ' + p.symbol);
   }
+
+  /*
+  for (const p of products[hre.network.name]) {
+    await trading.updateProduct(p.id, [
+      p.feed,
+      parseUnits(""+p.leverage),
+      p.fee * 100, 
+      true,
+      parseUnits("200"),
+      0,
+      0,
+      12 * 100, 
+      p.longSettle ? 72 * 3600 : 2 * 60, 
+      2 * 60, 
+      80 * 100, 
+      5 * 100
+    ]);
+    console.log('Updated product ' + p.symbol);
+  }
+  */
 
 }
 
