@@ -583,7 +583,7 @@ contract Trading {
 				vault.balance += uint96(vaultReward);
 
 				uint256 liquidatorReward = uint256(position.margin) - vaultReward;
-				totalLiquidatorReward += liquidatorReward;
+				totalLiquidatorReward += liquidatorReward * 10**10;
 
 				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
 
