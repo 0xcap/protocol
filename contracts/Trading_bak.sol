@@ -10,6 +10,19 @@ contract Trading {
 
 	// Structs
 
+	struct Vault {
+		// 32 bytes
+		uint96 cap; // Maximum capacity. 12 bytes
+		uint96 balance; // 12 bytes
+		uint64 staked; // Total staked by users. 8 bytes
+		// 32 bytes
+		uint80 lastCheckpointBalance; // Used for max drawdown. 10 bytes
+		uint80 lastCheckpointTime; // Used for max drawdown. 10 bytes
+		uint32 stakingPeriod; // Time required to lock stake (seconds). 4 bytes
+		uint32 redemptionPeriod; // Duration for redemptions (seconds). 4 bytes
+		uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
+	}
+
 	struct Stake {
 		// 32 bytes
 		address owner; // 20 bytes
@@ -51,14 +64,28 @@ contract Trading {
 
 	address public owner; // Contract owner
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH
-
 	uint256 public nextStakeId; // Incremental
 	uint256 public nextPositionId; // Incremental
+	uint256 public protocolFee;  // In bps. 100 = 1%
+	Vault private vault;
 
 	mapping(uint256 => Product) private products;
+	mapping(uint256 => Stake) private stakes;
 	mapping(uint256 => Position) private positions;
 
 	// Events
+
+	event Staked(
+		uint256 stakeId, 
+		address indexed user, 
+		uint256 amount
+	);
+	event Redeemed(
+		uint256 stakeId, 
+		address indexed user, 
+		uint256 amount, 
+		bool isFullRedeem
+	);
 	event NewPosition(
 		uint256 indexed positionId, 
 		address indexed user, 
@@ -121,9 +148,94 @@ contract Trading {
 
 	constructor() {
 		owner = msg.sender;
+		vault = Vault({
+			cap: 0,
+			maxDailyDrawdown: 0,
+			staked: 0,
+			balance: 0,
+			lastCheckpointBalance: 0,
+			lastCheckpointTime: uint80(block.timestamp),
+			stakingPeriod: uint32(30 * 24 * 3600),
+			redemptionPeriod: uint32(8 * 3600)
+		});
 	}
 
 	// Methods
+
+	// Stakes msg.value in the vault
+	function stake() external payable {
+
+		uint256 amount = msg.value / 10**10; // truncate to 8 decimals
+
+		require(amount >= MIN_MARGIN, "!margin");
+		require(uint256(vault.staked) + amount <= uint256(vault.cap), "!cap");
+
+		vault.balance += uint96(amount);
+		vault.staked += uint64(amount);
+
+		address user = msg.sender;
+
+		nextStakeId++;
+		stakes[nextStakeId] = Stake({
+			owner: user,
+			amount: uint64(amount),
+			timestamp: uint32(block.timestamp)
+		});
+
+		emit Staked(
+			nextStakeId, 
+			user, 
+			amount
+		);
+
+	}
+
+	// Redeems amount from Stake with id = stakeId
+	function redeem(
+		uint256 stakeId, 
+		uint256 amount
+	) external {
+
+		require(amount <= uint256(vault.staked), "!staked");
+
+		address user = msg.sender;
+
+		Stake storage _stake = stakes[stakeId];
+		require(_stake.owner == user, "!owner");
+
+		bool isFullRedeem = amount >= uint256(_stake.amount);
+		if (isFullRedeem) {
+			amount = uint256(_stake.amount);
+		}
+
+		if (user != owner) {
+			uint256 timeDiff = block.timestamp - uint256(_stake.timestamp);
+			require(
+				(timeDiff > uint256(vault.stakingPeriod)) &&
+				(timeDiff % uint256(vault.stakingPeriod)) < uint256(vault.redemptionPeriod)
+			, "!period");
+		}
+
+		uint256 amountBalance = amount * uint256(vault.balance) / uint256(vault.staked);
+
+		_stake.amount -= uint64(amount);
+		vault.staked -= uint64(amount);
+		vault.balance -= uint96(amountBalance);
+
+		if (isFullRedeem) {
+			delete stakes[stakeId];
+		}
+
+		payable(user).transfer(amountBalance * 10**10);
+
+		emit Redeemed(
+			stakeId, 
+			user, 
+			amountBalance, 
+			isFullRedeem
+		);
+
+	}
 
 	// Opens position with margin = msg.value
 	function openPosition(
@@ -290,23 +402,38 @@ contract Trading {
 				pnl -= interest;
 			}
 
+			// Calculate protocol fee
+			if (protocolFee > 0) {
+				uint256 protocolFeeAmount = protocolFee * margin * position.leverage / 10**12;
+				payable(owner).transfer(protocolFeeAmount * 10**10);
+				if (pnlIsNegative) {
+					pnl += protocolFeeAmount;
+				} else if (pnl < protocolFeeAmount) {
+					pnl = protocolFeeAmount - pnl;
+					pnlIsNegative = true;
+				} else {
+					pnl -= protocolFeeAmount;
+				}
+			}
+
 		}
 
 		// Checkpoint vault
-		IVault(vault).checkpointVault();
+		if (uint256(vault.lastCheckpointTime) < block.timestamp - 24 hours) {
+			vault.lastCheckpointTime = uint80(block.timestamp);
+			vault.lastCheckpointBalance = uint80(vault.balance);
+		}
 
 		// Update vault
-
-		// TODO: pnl negative should be split to staking, vault, rebates
-
 		if (pnlIsNegative) {
-
-			IVault(vault).receive{pnl * pnlShareVault * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
-			IStaking(staking).receive{pnl * pnlShareStaking * 10**6}(); // transfers pnl and there updates balance etc.
-			IRebates(rebates).receive{pnl * pnlShareRebates * 10**6}(); // transfers pnl and there updates balance etc.
-
-			if (pnl < margin) payable(position.owner).transfer((margin - pnl) * 10**10);
 			
+			if (pnl < margin) {
+				payable(position.owner).transfer((margin - pnl) * 10**10);
+				vault.balance += uint96(pnl);
+			} else {
+				vault.balance += uint96(margin);
+			}
+
 		} else {
 			
 			if (releaseMargin) {
@@ -315,11 +442,14 @@ contract Trading {
 			}
 			
 			// Check vault
-			require(IVault(vault).hasEnoughBalanceFor(pnl), "!vault-insufficient");
-			require(IVault(vault).isAboveMaxDrawdownWith(pnl), "!max-drawdown");
+			require(uint256(vault.balance) >= pnl, "!vault-insufficient");
+			require(
+				uint256(vault.balance) - pnl >= uint256(vault.lastCheckpointBalance) * (10**4 - uint256(vault.maxDailyDrawdown)) / 10**4
+			, "!max-drawdown");
+			
+			vault.balance -= uint96(pnl);
 
-			payable(position.owner).transfer(margin * 10**10);
-			IVault(vault).pay(position.owner, pnl * 10**10); // also subtracts from vault balance
+			payable(position.owner).transfer((margin + pnl) * 10**10);
 		
 		}
 
