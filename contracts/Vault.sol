@@ -21,11 +21,20 @@ contract Vault is IVault {
 		uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
 	}
 
+	// receive
+
+	// pay
+
+	// checkpoint
+
+	// hasEnoughBalance
+
+	// isAtMaxDrawdown
 
 	// deposit
 
 	// withdraw
 
-	// owner method to update vault
+	// owner method to update vault params
 
 }

@@ -419,7 +419,7 @@ contract Trading {
 	}
 
 	// Sends ETH to the different contract receipients: vault, CAP staking, treasury
-	function _splitSend(uint256 amount) {
+	function _splitSend(uint256 amount) internal {
 		if (amount == 0) return;
 		IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
 		IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.

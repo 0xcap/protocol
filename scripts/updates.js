@@ -38,6 +38,7 @@ async function main() {
         maxExposure: 300,
         symbol: 'ETH-USD'
       },
+      /*
       {
         id: 2, // BTC-USD
         feed: '0x6ce185860a4963106506C203335A2910413708e9',
@@ -86,6 +87,7 @@ async function main() {
         maxExposure: 100,
         symbol: 'YFI-USD'
       },
+      */
     ]
   };
 
