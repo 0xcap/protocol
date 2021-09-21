@@ -51,6 +51,7 @@ contract Trading {
 	address public vault;
 	address public staking;
 	address public treasury;
+	address public darkOracle;
 
 
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
@@ -484,7 +485,7 @@ contract Trading {
 			(
 				uint256 doPrice, 
 				uint256 doTimestamp
-			) = IDarkOracle(product.feed).getLatestData();
+			) = IDarkOracle(darkOracle).getLatestData(product.feed);
 
 			// If it's too old / too different, use chainlink
 			if (
