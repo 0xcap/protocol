@@ -13,13 +13,6 @@ contract Trading {
 
 	// Structs
 
-	struct Stake {
-		// 32 bytes
-		address owner; // 20 bytes
-		uint64 amount; // 8 bytes
-		uint32 timestamp; // 4 bytes
-	}
-
 	struct Product {
 		// 32 bytes
 		address feed; // Chainlink (and DO) feed. 20 bytes
@@ -58,11 +51,12 @@ contract Trading {
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
 	uint256 public DARK_ORACLE_STALE_PERIOD = 30 * 60; // 30 min - should be configurable
 
-	uint256 public nextStakeId; // Incremental
 	uint256 public nextPositionId; // Incremental
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
+
+	uint256[] public pnlShares; // in bps [7000, 2000, 1000] = 70% to vault, 20% to staking, 10% to treasury
 
 	// Events
 	event NewPosition(
@@ -100,9 +94,6 @@ contract Trading {
 		uint256 vaultReward, 
 		uint256 liquidatorReward
 	);
-	event VaultUpdated(
-		Vault vault
-	);
 	event ProductAdded(
 		uint256 productId, 
 		Product product
@@ -110,9 +101,6 @@ contract Trading {
 	event ProductUpdated(
 		uint256 productId, 
 		Product product
-	);
-	event ProtocolFeeUpdated(
-		uint256 bps
 	);
 	event OwnerUpdated(
 		address newOwner
@@ -288,18 +276,13 @@ contract Trading {
 		}
 
 		// Checkpoint vault
-		IVault(vault).checkpointVault();
+		IVault(vault).checkpoint();
 
 		// Update vault
 
 		if (pnlIsNegative) {
-
-			IVault(vault).receive{pnl * pnlShareVault * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
-			IStaking(staking).receive{pnl * pnlShareStaking * 10**6}(); // transfers pnl and there updates balance etc.
-			IRebates(rebates).receive{pnl * pnlShareRebates * 10**6}(); // transfers pnl and there updates balance etc.
-
+			_splitSend(pnl);
 			if (pnl < margin) payable(position.owner).transfer((margin - pnl) * 10**10);
-
 		} else {
 			
 			if (releaseMargin) {
@@ -308,8 +291,8 @@ contract Trading {
 			}
 			
 			// Check vault
-			require(IVault(vault).hasEnoughBalanceFor(pnl), "!vault-insufficient");
-			require(IVault(vault).isAboveMaxDrawdownWith(pnl), "!max-drawdown");
+			require(IVault(vault).hasEnoughBalance(pnl), "!vault-insufficient");
+			require(!IVault(vault).isAtMaxDrawdown(pnl), "!max-drawdown");
 
 			payable(position.owner).transfer(margin * 10**10); // pay margin from this contract
 			IVault(vault).pay(position.owner, pnl * 10**10); // pay P/L from vault
@@ -357,6 +340,7 @@ contract Trading {
 
 		address liquidator = msg.sender;
 		uint256 length = positionIds.length;
+		uint256 totalVaultReward;
 		uint256 totalLiquidatorReward;
 
 		for (uint256 i = 0; i < length; i++) {
@@ -376,10 +360,10 @@ contract Trading {
 			if (_checkLiquidation(position, uint256(product.liquidationThreshold), price)) {
 
 				uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 10**4;
-				vault.balance += uint96(vaultReward);
+				totalVaultReward += uint96(vaultReward);
 
 				uint256 liquidatorReward = uint256(position.margin) - vaultReward;
-				totalLiquidatorReward += liquidatorReward * 10**10;
+				totalLiquidatorReward += liquidatorReward;
 
 				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
 
@@ -424,10 +408,22 @@ contract Trading {
 
 		}
 
-		if (totalLiquidatorReward > 0) {
-			payable(liquidator).transfer(totalLiquidatorReward);
+		if (totalVaultReward > 0) {
+			_splitSend(totalVaultReward);
 		}
 
+		if (totalLiquidatorReward > 0) {
+			payable(liquidator).transfer(totalLiquidatorReward * 10**10);
+		}
+
+	}
+
+	// Sends ETH to the different contract receipients: vault, CAP staking, treasury
+	function _splitSend(uint256 amount) {
+		if (amount == 0) return;
+		IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
+		IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
+		ITreasury(treasury).receive{amount * pnlShares[2] * 10**6}(); // transfers pnl and there updates balance etc.
 	}
 
 	function _getPriceWithFee(
@@ -475,6 +471,8 @@ contract Trading {
 
 		if (product.doActive) {
 			// Dark oracle active
+
+			// TODO: pay DO from Treasury
 
 			(
 				uint256 doPrice, 
