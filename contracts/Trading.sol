@@ -48,6 +48,11 @@ contract Trading {
 
 	address public owner; // Contract owner
 
+	address public vault;
+	address public staking;
+	address public treasury;
+
+
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
 	uint256 public DARK_ORACLE_STALE_PERIOD = 30 * 60; // 30 min - should be configurable
 
@@ -290,13 +295,9 @@ contract Trading {
 				pnl = 0;
 			}
 			
-			// Check vault
-			require(IVault(vault).hasEnoughBalance(pnl), "!vault-insufficient");
-			require(!IVault(vault).isAtMaxDrawdown(pnl), "!max-drawdown");
-
+			IVault(vault).pay(position.owner, pnl); // pay P/L from vault, checks max drawdown etc.
 			payable(position.owner).transfer(margin * 10**10); // pay margin from this contract
-			IVault(vault).pay(position.owner, pnl * 10**10); // pay P/L from vault
-		
+			
 		}
 
 		if (position.isLong) {
@@ -421,9 +422,15 @@ contract Trading {
 	// Sends ETH to the different contract receipients: vault, CAP staking, treasury
 	function _splitSend(uint256 amount) internal {
 		if (amount == 0) return;
-		IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
-		IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
-		ITreasury(treasury).receive{amount * pnlShares[2] * 10**6}(); // transfers pnl and there updates balance etc.
+		if (pnlShares[0] > 0) {
+			IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
+		}
+		if (pnlShares[1] > 0) {
+			IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
+		}
+		if (pnlShares[2] > 0) {
+			ITreasury(treasury).receive{amount * pnlShares[2] * 10**6}(); // transfers pnl and there updates balance etc.
+		}
 	}
 
 	function _getPriceWithFee(
