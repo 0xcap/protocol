@@ -49,7 +49,6 @@ contract Trading {
 	address public owner; // Contract owner
 
 	address public vault;
-	address public staking;
 	address public treasury;
 	address public darkOracle;
 
@@ -62,7 +61,7 @@ contract Trading {
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
 
-	uint256[] public pnlShares; // in bps [7000, 2000, 1000] = 70% to vault, 20% to staking, 10% to treasury
+	uint256[] public pnlShares; // in bps [9000, 1000] = 90% to vault, 10% to treasury
 
 	// Events
 	event NewPosition(
@@ -420,17 +419,14 @@ contract Trading {
 
 	}
 
-	// Sends ETH to the different contract receipients: vault, CAP staking, treasury
+	// Sends ETH to the different contract receipients: vault & treasury
 	function _splitSend(uint256 amount) internal {
 		if (amount == 0) return;
 		if (pnlShares[0] > 0) {
-			IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
+			IVault(vault).receive{amount * pnlShares[0] * 10**6}();
 		}
 		if (pnlShares[1] > 0) {
-			IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
-		}
-		if (pnlShares[2] > 0) {
-			ITreasury(treasury).receive{amount * pnlShares[2] * 10**6}(); // transfers pnl and there updates balance etc.
+			ITreasury(treasury).receive{amount * pnlShares[1] * 10**6}();
 		}
 	}
 
