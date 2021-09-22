@@ -30,6 +30,8 @@ contract Trading {
 		uint16 minTradeDuration; // In seconds. 2 bytes
 		uint16 liquidationThreshold; // In bps. 8000 = 80%. 2 bytes
 		uint16 liquidationBounty; // In bps. 500 = 5%. 2 bytes
+
+		// TODO: max order size
 	}
 
 	struct Position {
@@ -49,8 +51,7 @@ contract Trading {
 	address public owner; // Contract owner
 
 	address public vault;
-	address public staking;
-	address public treasury;
+	address public rewards;
 	address public darkOracle;
 
 
@@ -296,7 +297,7 @@ contract Trading {
 				pnl = 0;
 			}
 			
-			IVault(vault).pay(position.owner, pnl); // pay P/L from vault, checks max drawdown etc.
+			IVault(vault).pay(position.owner, pnl, false); // pay P/L from vault, checks max drawdown etc.
 			payable(position.owner).transfer(margin * 10**10); // pay margin from this contract
 			
 		}
@@ -427,10 +428,7 @@ contract Trading {
 			IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
 		}
 		if (pnlShares[1] > 0) {
-			IStaking(staking).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
-		}
-		if (pnlShares[2] > 0) {
-			ITreasury(treasury).receive{amount * pnlShares[2] * 10**6}(); // transfers pnl and there updates balance etc.
+			IRewards(rewards).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
 		}
 	}
 

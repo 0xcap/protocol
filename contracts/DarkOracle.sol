@@ -9,7 +9,7 @@ contract DarkOracle is IDarkOracle {
 
 	address public owner; // Contract owner
 	address public trading; // Trading contract
-	address public treasury; // Treasury contract
+	address public vault; // vault contract
 	address public oracle;
 
 	uint256 public requestNumber;
@@ -31,7 +31,7 @@ contract DarkOracle is IDarkOracle {
 		}
 		requestNumber++;
 		if (requestNumber == MAX_REQUESTS_BEFORE_FUNDING) {
-			ITreasury(treasury).fundOracle(oracle, amount);
+			IVault(vault).pay(oracle, amount, true);
 			requestNumber = 0;
 		}
 	}
