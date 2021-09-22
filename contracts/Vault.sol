@@ -11,8 +11,6 @@ contract Vault is IVault {
 
 	// All amounts in 8 decimals
 
-	// vault struct with params
-
 	struct Vault {
 		// TODO: revisit bytes distribution
 		// 32 bytes
@@ -22,6 +20,8 @@ contract Vault is IVault {
 		uint80 lastCheckpointBalance; // Used for max drawdown. 10 bytes
 		uint80 lastCheckpointTime; // Used for max drawdown. 10 bytes
 		uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
+		uint32 redemptionFee;
+		uint64 minHoldingTime;
 	}
 
 	address public owner; // Contract owner
@@ -29,6 +29,8 @@ contract Vault is IVault {
 	address public clp; // CLP token
 
 	uint256 public MIN_DEPOSIT = 100000; //0.001 ETH
+
+	mapping(address => uint256) lastDepositTime;
 
 	Vault private vault;
 
@@ -85,6 +87,7 @@ contract Vault is IVault {
 		uint256 clpAmountToMint = vault.balance == 0 ? amount : amount * clpSupply / vault.balance;
 
 		address user = msg.sender;
+		lastDepositTime[user] = block.timestamp;
 
 		IERC20(clp).mint(user, clpAmountToMint * 10**10);
 
@@ -107,6 +110,7 @@ contract Vault is IVault {
 		uint256 clpSupply = IERC20(clp).totalSupply();
 
 		require(amount * 10**10 <= clpSupply, "!supply");
+		require(lastDepositTime[user] < block.timestamp - vault.minHoldingTime, "!min-holding");
 
 		uint256 weiToRedeem = (10**4 - vault.redemptionFee) * amount * vault.balance * 10**16 / clpSupply;
 
