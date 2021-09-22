@@ -7,8 +7,6 @@ import "hardhat/console.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IERC20.sol";
 
-// need to hold min amount of CAP to participate or redeem from the vault. CAP as a utility token to access the vault
-
 contract Vault is IVault {
 
 	// All amounts in 8 decimals
@@ -18,29 +16,21 @@ contract Vault is IVault {
 	struct Vault {
 		// TODO: revisit bytes distribution
 		// 32 bytes
+		uint96 maxSupply; // Maximum capacity in CLP. 12 bytes
 		uint96 balance; // Deposits + return. 12 bytes
 		// 32 bytes
 		uint80 lastCheckpointBalance; // Used for max drawdown. 10 bytes
 		uint80 lastCheckpointTime; // Used for max drawdown. 10 bytes
 		uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
-		uint32 redemptionFee;
-		uint64 minHoldingTime;
-		uint256 minCAPBalanceDeposit; // can be increased to limit vault size
-		uint256 minCAPBalanceWithdraw;
 	}
 
 	address public owner; // Contract owner
 	address public trading; // Trading contract
-	address public cap; // CAP contract
-
-	uint256 public clpSupply;
+	address public clp; // CLP token
 
 	uint256 public MIN_DEPOSIT = 100000; //0.001 ETH
 
 	Vault private vault;
-
-	mapping(address => uint256) clpBalances;
-	mapping(address => uint256) lastDepositTime;
 
 	constructor() {
 		owner = msg.sender;
@@ -82,22 +72,21 @@ contract Vault is IVault {
 		}
 	}
 
-	// deposit amount in ETH and "mint" CLP
+	// deposit amount in ETH and mint CLP
 	function deposit() external payable {
 
 		uint256 amount = msg.value / 10**10; // truncate to 8 decimals
 		require(amount >= MIN_DEPOSIT, "!minimum");
 
-		address user = msg.sender;
-		uint256 capBalance = IERC20(cap).balanceOf(user);
-		require(capBalance >= vault.minCAPBalanceDeposit, "!insufficient-cap");
+		uint256 clpSupply = IERC20(clp).totalSupply();
+
+		require(clpSupply + amount <= uint256(vault.maxSupply), "!cap");
 
 		uint256 clpAmountToMint = vault.balance == 0 ? amount : amount * clpSupply / vault.balance;
 
-		lastDepositTime[user] = block.timestamp;
+		address user = msg.sender;
 
-		clpSupply += clpAmountToMint;
-		clpBalances[user] += clpAmountToMint;
+		IERC20(clp).mint(user, clpAmountToMint * 10**10);
 
 		vault.balance += uint96(amount);
 
@@ -109,27 +98,23 @@ contract Vault is IVault {
 
 	}
 
-	// withdraw with redemption fee
+	// withdraw (burn CLP) with redemption fee = 10%
 	function withdraw(uint256 amount) external {
-
-		address user = msg.sender;
 
 		// amount of CLP, 8 decimals
 		require(amount >= MIN_DEPOSIT, "!minimum");
-		require(amount <= clpSupply, "!supply");
-		require(amount <= clpBalances[user], "!maximum");
 
-		uint256 capBalance = IERC20(cap).balanceOf(user);
-		require(capBalance >= vault.minCAPBalanceWithdraw, "!insufficient-cap");
+		uint256 clpSupply = IERC20(clp).totalSupply();
 
-		require(lastDepositTime[user] < block.timestamp - vault.minHoldingTime, "!min-holding");
+		require(amount * 10**10 <= clpSupply, "!supply");
 
-		uint256 weiToRedeem = (10**4 - vault.redemptionFee) * amount * vault.balance * 10**6 / clpSupply;
+		uint256 weiToRedeem = (10**4 - vault.redemptionFee) * amount * vault.balance * 10**16 / clpSupply;
 
 		vault.balance -= uint96(weiToRedeem / 10**10);
 
-		clpSupply -= amount;
-		clpBalances[user] -= amount;
+		address user = msg.sender;
+
+		IERC20(clp).burn(user, amount * 10**10);
 
 		payable(user).transfer(weiToRedeem);
 
