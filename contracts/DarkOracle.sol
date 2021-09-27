@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 
 import "./interfaces/IDarkOracle.sol";
+import "./interfaces/ITreasury.sol";
 
 contract DarkOracle is IDarkOracle {
 
@@ -11,6 +12,7 @@ contract DarkOracle is IDarkOracle {
 	address public trading; // Trading contract
 	address public vault; // vault contract
 	address public oracle;
+	address public treasury;
 
 	uint256 public requestNumber;
 
@@ -31,7 +33,7 @@ contract DarkOracle is IDarkOracle {
 		}
 		requestNumber++;
 		if (requestNumber == MAX_REQUESTS_BEFORE_FUNDING) {
-			IVault(vault).pay(oracle, amount, true);
+			ITreasury(treasury).pay(oracle, amount);
 			requestNumber = 0;
 		}
 	}

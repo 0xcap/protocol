@@ -6,6 +6,7 @@ import "hardhat/console.sol";
 // ETH Vault
 import "./interfaces/IVault.sol";
 import "./interfaces/IERC20.sol";
+import "./interfaces/ITreasury.sol";
 
 contract Vault is IVault {
 
@@ -13,22 +14,22 @@ contract Vault is IVault {
 
 	// staking and redemption periods, tracking balances by stake not user, max clp supply (cap)
 
-	struct Vault {
-		// TODO: revisit bytes distribution
-		// 32 bytes
-		uint96 maxSupply; // Maximum capacity in CLP. 12 bytes
-		uint96 balance; // Deposits + return. 12 bytes
-		// 32 bytes
-		uint80 lastCheckpointBalance; // Used for max drawdown. 10 bytes
-		uint80 lastCheckpointTime; // Used for max drawdown. 10 bytes
-		uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
-		uint stakingPeriod;
-		uint redemptionPeriod;
-	}
+	// TODO: revisit bytes distribution
+
+	// 32 bytes
+	uint96 maxSupply; // Maximum capacity in CLP. 12 bytes
+	uint96 balance; // Deposits + return. 12 bytes
+		
+	// 32 bytes
+	uint80 lastCheckpointBalance; // Used for max drawdown. 10 bytes
+	uint80 lastCheckpointTime; // Used for max drawdown. 10 bytes
+	uint32 maxDailyDrawdown; // In basis points (bps) 1000 = 10%. 4 bytes
+	uint stakingPeriod;
+	uint redemptionPeriod;
 
 	address public owner; // Contract owner
 	address public trading; // Trading contract
-	address public darkOracle; // DO
+	address public treasury;
 
 	uint256 public clpSupply;
 
@@ -36,9 +37,11 @@ contract Vault is IVault {
 
 	int256 dailyPnl; // for max drawdown
 
+	uint256 treasuryShare = 1000; // 10%
+
 	struct Stake {
 		address owner;
-		uint256 amount; // in CAP
+		uint256 amount; // in ETH
 		uint256 balance; // in "CLP"
 		uint256 timestamp;
 	}
@@ -66,6 +69,9 @@ contract Vault is IVault {
 	// receive
 	function receive() external payable onlyTrading {
 		// TODO: may result in "dust" ETH that will need to be collected?
+
+		ITreasury(treasury).receive{msg.value * treasuryShare / 10000}();
+
 		vault.balance += uint96(msg.value / 10**10); // truncate to 8 decimals
 		dailyPnl += msg.value / 10**10;
 	}

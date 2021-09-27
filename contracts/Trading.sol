@@ -50,7 +50,7 @@ contract Trading {
 	address public owner; // Contract owner
 
 	address public vault;
-	address public rewards;
+	address public treasury;
 	address public darkOracle;
 
 
@@ -396,12 +396,7 @@ contract Trading {
 	// Sends ETH to the different contract receipients: vault, CAP staking
 	function _splitSend(uint256 amount) internal {
 		if (amount == 0) return;
-		if (pnlShares[0] > 0) {
-			IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
-		}
-		if (pnlShares[1] > 0) {
-			IRewards(rewards).receive{amount * pnlShares[1] * 10**6}(); // transfers pnl and there updates balance etc.
-		}
+		IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
 	}
 
 	function _getPnL(
