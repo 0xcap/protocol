@@ -12,10 +12,12 @@ import "./interfaces/ITreasury.sol";
 
 contract Treasury is ITreasury {
 
-	ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);;
+	// Arbitrum addresses 
+	
+	ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
-	address public constant CAP = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-	address public constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+	address public constant CAP = 0x031d35296154279dc1984dcd93e392b1f946737b;
+	address public constant WETH9 = 0x82af49447d8a07e3bd95bd0d56f35241523fbab1;
 
 	uint24 public constant poolFee = 3000;
 
