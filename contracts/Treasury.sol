@@ -12,69 +12,156 @@ import "./interfaces/ITreasury.sol";
 
 contract Treasury is ITreasury {
 
-	// Arbitrum addresses 
-	
-	ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+	// Contract dependencies
+	address public owner;
+	address public trading;
+	address public darkFeed;
 
-	address public constant CAP = 0x031d35296154279dc1984dcd93e392b1f946737b;
+	// Uniswap arbitrum addresses
+	ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+	//address public constant CAP = 0x031d35296154279dc1984dcd93e392b1f946737b;
+
+	// Arbitrum
 	address public constant WETH9 = 0x82af49447d8a07e3bd95bd0d56f35241523fbab1;
 
-	uint24 public constant poolFee = 3000;
+	//uint256 public buybackPeriod = 7 days;
+	//uint256 public maxBuybackShare = 8000;
 
-	address public owner; // Contract owner
-	address public oracle; // Trading contract
+	uint256 dailyOutflow;
+	uint256 public maxDailyOutflow; // in bps
+	uint256 public lastCheckpointTime;
+
+	// TODO: use treasury directly as vault, no max drawdown, etc. Treasury can sell assets, hedge, support Cap ecosystem, etc.
+
+	// Events
+
+	event Swap(
+		uint256 amount,
+	    uint256 amountOut,
+	    uint256 amountOutMinimum,
+	    address tokenIn,
+	    address tokenOut,
+	    uint24 poolFee
+	);
 
 	constructor() {
 		owner = msg.sender;
 	}
 
-	// receive
 	function receive() external payable {
-
 	}
 
-	function sendETH(address destination, uint256 amount) external onlyOwner {
-		require(msg.sender == owner || msg.sender == oracle, "!owner");
+	function pay(
+		address user, 
+		uint256 amount
+	) external onlyTrading {
+		uint256 weiBalance = address(this).balance;
+		require(amount <= weiBalance, "!vault-insufficient");
+		dailyOutflow += amount;
+		// Check maxDailyOutflow
+		if (lastCheckpointTime < block.timestamp - 24 hours) {
+			lastCheckpointTime = block.timestamp;
+			dailyOutflow = 0;
+		}
+		require(dailyOutflow <= maxDailyOutflow * weiBalance / 10**4, "!outflow");
+		payable(user).transfer(amount);
+	}
+
+	function sendETH(
+		address destination, 
+		uint256 amount
+	) external onlyOwnerOrDarkFeed {
+		uint256 weiBalance = address(this).balance;
+		if (amount > weiBalance) {
+			if (msg.sender == oracle) return;
+			revert("!balance");
+		}
 		payable(destination).transfer(amount);
 	}
 
-	function sendToken(address token, address destination, uint256 amount) external onlyOwner {
-		require(msg.sender == owner || msg.sender == oracle, "!owner");
+	function sendToken(
+		address token, 
+		address destination, 
+		uint256 amount
+	) external onlyOwner {
 		IERC20(token).transfer(destination, amount);
 	}
 
-	function buyback(uint256 amount, uint256 amountOutMinimum) external onlyOwner {
+	function swap(
+		address tokenIn,
+		address tokenOut,
+		uint256 amountIn, 
+		uint256 amountOutMinimum,
+		uint24 poolFee
+	) external onlyOwner {
 
-		// CAP is precious. Buy back CAP at market from Uniswap sellers using part of trader losses. Can be called once per period. 
-
-		// Amount up to 80% of treasury (configurable)
-
-		uint256 weiBalance = address(this).balance;
-
-		require(amount <= weiBalance * 80 / 100, "!amount");
+        // Approve the router to spend tokenIn
+        TransferHelper.safeApprove(tokenIn, address(swapRouter), amountIn);
 
 		ISwapRouter.ExactInputSingleParams memory params =
 	        ISwapRouter.ExactInputSingleParams({
-	            tokenIn: WETH9,
-	            tokenOut: CAP,
+	            tokenIn: tokenIn,
+	            tokenOut: tokenOut,
 	            fee: poolFee,
 	            recipient: msg.sender,
 	            deadline: block.timestamp,
-	            amountIn: amount,
+	            amountIn: amountIn,
 	            amountOutMinimum: amountOutMinimum,
 	            sqrtPriceLimitX96: 0
 	        });
 
-	    ISwapRouter.exactInputSingle{ value: amount }(params);
+	    uint256 amountOut;
 
-		// Bought back CAP can be burnt or sold OTC by governance, or later used for rewards, pay contributors, and other incentives.
+	    if (tokenIn == WETH9) {
+	    	amountOut = ISwapRouter.exactInputSingle{value: amount}(params);
+	    } else {
+	    	amountOut = ISwapRouter.exactInputSingle(params);
+	    }
+
+	    emit Swap(
+	    	amountIn,
+	    	amountOut,
+	    	amountOutMinimum,
+	    	tokenIn,
+	    	tokenOut,
+	    	poolFee
+	    );
 
 	}
+
+	// Owner methods
+
+	function setParams(uint256 _maxDailyOutflow) external onlyOwner {
+		maxDailyOutflow = _maxDailyOutflow;
+	}
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setDarkFeed(address _darkFeed) external onlyOwner {
+		darkFeed = _darkFeed;
+	}
+
+	function setTrading(address _trading) external onlyOwner {
+		trading = _trading;
+	}
+
+	// Modifiers
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, "!owner");
 		_;
 	}
 
+	modifier onlyTrading() {
+		require(msg.sender == trading, "!trading");
+		_;
+	}
+
+	modifier onlyOwnerOrDarkFeed() {
+		require(msg.sender == owner || msg.sender == darkFeed, "!owner|darkFeed");
+		_;
+	}
 
 }

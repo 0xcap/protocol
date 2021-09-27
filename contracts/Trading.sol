@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-import "./interfaces/IDarkOracle.sol";
-import "./interfaces/IVault.sol";
+import "./interfaces/IDarkFeed.sol";
+import "./interfaces/ITreasury.sol";
 
 contract Trading {
 
@@ -48,11 +48,8 @@ contract Trading {
 	// Variables
 
 	address public owner; // Contract owner
-
-	address public vault;
 	address public treasury;
-	address public darkOracle;
-
+	address public darkFeed;
 
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
 	uint256 public DARK_ORACLE_STALE_PERIOD = 30 * 60; // 30 min - should be configurable
@@ -62,8 +59,6 @@ contract Trading {
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
-
-	uint256[] public pnlShares; // in bps [7000, 2000, 1000] = 70% to vault, 20% to staking, 10% to treasury
 
 	// Events
 	event NewPosition(
@@ -223,9 +218,16 @@ contract Trading {
 		// Check params
 		require(margin >= MIN_MARGIN, "!margin");
 
+		// Governance can release-margin close on any position to protect from erroneous profits
+		bool ownerOverride;
+		if (msg.sender == owner) {
+			ownerOverride = true;
+			releaseMargin = true;
+		}
+
 		// Check position
 		Position storage position = positions[positionId];
-		require(msg.sender == position.owner, "!owner");
+		require(ownerOverride || msg.sender == position.owner, "!owner");
 
 		// Check product
 		Product storage product = products[uint256(position.productId)];
@@ -257,6 +259,10 @@ contract Trading {
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
+		if (ownerOverride && pnlIsNegative) {
+			revert("!override");
+		}
+
 		bool isLiquidatable = _checkLiquidation(position, uint256(product.liquidationThreshold), 0);
 
 		if (isLiquidatable) {
@@ -266,13 +272,10 @@ contract Trading {
 			isFullClose = true;
 		}
 
-		// Checkpoint vault
-		IVault(vault).checkpoint();
-
 		// Update vault
 
 		if (pnlIsNegative) {
-			_splitSend(pnl);
+			_sendToTreasury(pnl);
 			if (pnl < margin) payable(position.owner).transfer((margin - pnl) * 10**10);
 		} else {
 			
@@ -281,12 +284,10 @@ contract Trading {
 				pnl = 0;
 			}
 			
-			IVault(vault).pay(position.owner, pnl, false); // pay P/L from vault, checks max drawdown etc.
+			ITreasury(treasury).pay(position.owner, pnl);
 			payable(position.owner).transfer(margin * 10**10); // pay margin from this contract
 			
 		}
-
-		
 
 		emit ClosePosition(
 			positionId, 
@@ -384,7 +385,7 @@ contract Trading {
 		}
 
 		if (totalVaultReward > 0) {
-			_splitSend(totalVaultReward);
+			_sendToTreasury(totalVaultReward);
 		}
 
 		if (totalLiquidatorReward > 0) {
@@ -393,10 +394,9 @@ contract Trading {
 
 	}
 
-	// Sends ETH to the different contract receipients: vault, CAP staking
-	function _splitSend(uint256 amount) internal {
+	function _sendToTreasury(uint256 amount) internal {
 		if (amount == 0) return;
-		IVault(vault).receive{amount * pnlShares[0] * 10**6}(); // transfers pnl and there updates balance etc. pnlShareVault in bps
+		ITreasury(treasury).receive{amount * 10**10}();
 	}
 
 	function _getPnL(
@@ -485,6 +485,8 @@ contract Trading {
 		require(price > 0, '!price');
 		require(timeStamp > 0, '!timeStamp');
 
+		// TODO: deal with stale chainlink price 
+
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 
 		uint256 chainLinkPrice;
@@ -506,7 +508,7 @@ contract Trading {
 			(
 				uint256 doPrice, 
 				uint256 doTimestamp
-			) = IDarkOracle(darkOracle).getLatestData(product.feed);
+			) = IDarkFeed(darkFeed).getLatestData(product.feed);
 
 			// If it's too old / too different, use chainlink
 			if (
