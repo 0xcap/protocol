@@ -16,8 +16,9 @@ contract Trading {
 	struct Product {
 		// 32 bytes
 		address feed; // Chainlink (and DO) feed. 20 bytes
-		uint64 maxLeverage; // 8 bytes
+		uint48 maxLeverage; // 6 bytes
 		uint16 fee; // In bps. 0.5% = 50. 2 bytes
+		uint16 skew; // In bps. 2 bytes. 0.5% skew means add 0.5% x exposure % at the max exposure side, subtract on the least exposed side. open interest long - open interest short / max exposure 
 		bool isActive; // 1 byte
 		bool doActive; // 1 byte, dark oracle active
 		// 32 bytes
@@ -30,8 +31,6 @@ contract Trading {
 		uint16 minTradeDuration; // In seconds. 2 bytes
 		uint16 liquidationThreshold; // In bps. 8000 = 80%. 2 bytes
 		uint16 liquidationBounty; // In bps. 500 = 5%. 2 bytes
-
-		// TODO: max order size
 	}
 
 	struct Position {
@@ -57,6 +56,7 @@ contract Trading {
 
 	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
 	uint256 public DARK_ORACLE_STALE_PERIOD = 30 * 60; // 30 min - should be configurable
+	//uint256 public FORGOTTEN_POSITION_THRESHOLD = 730 days; // positions can be liquidated by anyone after this time, to avoid buildup from lost wallets, etc.
 
 	uint256 public nextPositionId; // Incremental
 
@@ -156,7 +156,7 @@ contract Trading {
 			, "!exposure-short");
 		}
 
-		uint256 price = _getPriceWithFee(productId, isLong);
+		uint256 price = _getPriceWithFee(productId, product, isLong);
 		
 		address user = msg.sender;
 
@@ -239,10 +239,23 @@ contract Trading {
 			isFullClose = true;
 		}
 
-		uint256 price = _getPriceWithFee(position.productId);
+		if (position.isLong) {
+			if (uint256(product.openInterestLong) >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestLong -= uint48(margin * uint256(position.leverage) / 10**8);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (uint256(product.openInterestShort) >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestShort -= uint48(margin * uint256(position.leverage) / 10**8);
+			} else {
+				product.openInterestShort = 0;
+			}
+		}
 
-		uint256 pnl;
-		bool pnlIsNegative;
+		uint256 price = _getPriceWithFee(position.productId, product, !position.isLong);
+
+		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
 		bool isLiquidatable = _checkLiquidation(position, uint256(product.liquidationThreshold), 0);
 
@@ -251,35 +264,6 @@ contract Trading {
 			pnl = uint256(position.margin);
 			pnlIsNegative = true;
 			isFullClose = true;
-		} else {
-			
-			if (position.isLong) {
-				if (price >= uint256(position.price)) {
-					pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
-				} else {
-					pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
-					pnlIsNegative = true;
-				}
-			} else {
-				if (price > uint256(position.price)) {
-					pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
-					pnlIsNegative = true;
-				} else {
-					pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
-				}
-			}
-
-			// Subtract interest from P/L
-			uint256 interest = _calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), uint256(product.interest));
-			if (pnlIsNegative) {
-				pnl += interest;
-			} else if (pnl < interest) {
-				pnl = interest - pnl;
-				pnlIsNegative = true;
-			} else {
-				pnl -= interest;
-			}
-
 		}
 
 		// Checkpoint vault
@@ -302,19 +286,7 @@ contract Trading {
 			
 		}
 
-		if (position.isLong) {
-			if (uint256(product.openInterestLong) >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestLong -= uint48(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (uint256(product.openInterestShort) >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestShort -= uint48(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
+		
 
 		emit ClosePosition(
 			positionId, 
@@ -351,7 +323,7 @@ contract Trading {
 			uint256 positionId = positionIds[i];
 			Position memory position = positions[positionId];
 			
-			if (position.productId == 0 || position.isSettling) {
+			if (position.productId == 0) {
 				continue;
 			}
 
@@ -421,7 +393,7 @@ contract Trading {
 
 	}
 
-	// Sends ETH to the different contract receipients: vault, CAP staking, treasury
+	// Sends ETH to the different contract receipients: vault, CAP staking
 	function _splitSend(uint256 amount) internal {
 		if (amount == 0) return;
 		if (pnlShares[0] > 0) {
@@ -432,15 +404,71 @@ contract Trading {
 		}
 	}
 
+	function _getPnL(
+		Position calldata position,
+		uint256 price,
+		uint256 margin,
+		uint256 interest
+	) internal returns(uint256 pnl, bool pnlIsNegative) {
+
+		if (position.isLong) {
+			if (price >= uint256(position.price)) {
+				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+			} else {
+				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				pnlIsNegative = true;
+			}
+		} else {
+			if (price > uint256(position.price)) {
+				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+				pnlIsNegative = true;
+			} else {
+				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+			}
+		}
+
+		// Subtract interest from P/L
+		uint256 _interest = _calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), uint256(interest));
+		if (pnlIsNegative) {
+			pnl += _interest;
+		} else if (pnl < _interest) {
+			pnl = _interest - pnl;
+			pnlIsNegative = true;
+		} else {
+			pnl -= _interest;
+		}
+
+		return (pnl, pnlIsNegative);
+
+	}
+
 	function _getPriceWithFee(
-		uint256 productId, 
+		uint256 productId,
+		Product calldata product, 
 		bool isLong,
 	) internal returns(uint256) {
-		uint256 price = getLatestPrice(productId);
+		uint256 price = getLatestPrice(productId, false);
+		uint256 skew;
 		if (isLong) {
-			return price + price * fee / 10**4;
+			if (product.openInterestLong > product.openInterestShort) {
+				skew = product.skew * (product.openInterestLong - product.openInterestShort) / maxExposure;
+				return price + price * product.fee / 10**4 + price * skew / 10**4;
+			} else if (product.openInterestLong < product.openInterestShort) {
+				skew = product.skew * (product.openInterestShort - product.openInterestLong) / maxExposure;
+				return price + price * product.fee / 10**4 - price * skew / 10**4;
+			} else {
+				return price + price * product.fee / 10**4;
+			}
 		} else {
-			return price - price * fee / 10**4;
+			if (product.openInterestLong > product.openInterestShort) {
+				skew = product.skew * (product.openInterestLong - product.openInterestShort) / maxExposure;
+				return price + price * product.fee / 10**4 - price * skew / 10**4;
+			} else if (product.openInterestLong < product.openInterestShort) {
+				skew = product.skew * (product.openInterestShort - product.openInterestLong) / maxExposure;
+				return price + price * product.fee / 10**4 + price * skew / 10**4;
+			} else {
+				return price + price * product.fee / 10**4;
+			}
 		}
 	}
 
@@ -511,22 +539,17 @@ contract Trading {
 	function _checkLiquidation(
 		Position memory position, 
 		uint256 liquidationThreshold,
-		uint256 price
+		uint256 price,
+		uint256 interest
 	) internal pure returns (bool) {
 
 		if (price == 0) {
 			price = getLatestPrice(position.productId, true);
 		}
-		
-		uint256 liquidationPrice;
-		
-		if (position.isLong) {
-			liquidationPrice = position.price - position.price * liquidationThreshold * 10**4 / uint256(position.leverage);
-		} else {
-			liquidationPrice = position.price + position.price * liquidationThreshold * 10**4 / uint256(position.leverage);
-		}
 
-		if (position.isLong && price <= liquidationPrice || !position.isLong && price >= liquidationPrice) {
+		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, interest);
+		
+		if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
 			return true;
 		} else {
 			return false;

@@ -8,7 +8,7 @@ import "./interfaces/IRewards.sol";
 
 contract Rewards is IRewards {
 
-	// pool of rewards sent from Trading that can be claimed weekly by any CAP holder with over 10 CAP. Like a dividend basically. Can be claimed for 24 hours after week is over, else return to the vault. Your share of CAP, or smaller supply set by governance
+	// pool of rewards sent from Trading that can be claimed weekly by any CAP holder with over 10 CAP. Like a dividend basically. Can be claimed for 24 hours after week is over, else return to the vault.
 
 	uint256 public redemptionPeriod = 1 days; // in seconds
 
@@ -32,7 +32,6 @@ contract Rewards is IRewards {
 
 	// receive
 	function receive() external payable onlyTrading {
-		// TODO: may result in "dust" ETH that will need to be collected?
 		// Get week id
 		uint256 weekId = block.timestamp / 7 days;
 		weeklyRewards[weekId] += msg.value;
