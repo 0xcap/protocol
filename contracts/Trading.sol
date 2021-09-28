@@ -195,9 +195,9 @@ contract Trading {
 		require(position.productId > 0, "!position");
 		require(position.price == 0, "!settled");
 
-		price = _checkPrice(position.productId, price);
-
 		Product memory product = products[position.productId];
+
+		price = _checkPrice(product, price);
 		price = _getPriceWithFee(price, product.fee, position.isLong);
 
 		position.price = uint64(price);
@@ -276,8 +276,6 @@ contract Trading {
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 
-		price = _checkPrice(position.productId, price);
-
 		Order memory _closeOrder = closeOrders[positionId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
@@ -285,7 +283,8 @@ contract Trading {
 
 		Product storage product = products[position.productId];
 
-		price = _getPriceWithFee(price, product.fee, !position.isLong);
+		price = _checkPrice(product, price);
+		price = _getPriceWithFee(price, product.fee, !position.isLong);		
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
@@ -574,12 +573,9 @@ contract Trading {
 	}
 
 	function _checkPrice(
-		uint256 price,
-		uint256 productId
+		Product memory product,
+		uint256 price
 	) internal view returns(uint256) {
-
-		Product memory product = products[productId];
-		require(product.maxLeverage > 0, "!product");
 
 		uint256 mainFeedPrice = _getMainFeedPrice(product);
 
