@@ -30,14 +30,15 @@ contract Oracle is IOracle {
 		owner = msg.sender;
 	}
 
-	// 
+	// Todo: emit error as event inside catch with error string, can be listened to and displayed in client
+
 	function openPosition(
 		uint256 positionId,
 		uint256 price
 	) external onlyOracle {
 		try ITrading(trading).openPosition(positionId, price) {
 
-		} catch {
+		} catch Error(string memory reason) {
 			ITrading(trading).deletePosition(positionId);
 		}
 		_checkRequests();
@@ -49,7 +50,7 @@ contract Oracle is IOracle {
 	) external onlyOracle {
 		try ITrading(trading).closePosition(positionId, price) {
 
-		} catch {
+		} catch Error(string memory reason) {
 			ITrading(trading).deleteOrder(positionId);
 		}
 		_checkRequests();

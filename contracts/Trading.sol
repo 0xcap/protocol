@@ -202,12 +202,6 @@ contract Trading {
 		price = _checkPrice(product, position.timestamp, price);
 		price = _getPriceWithFee(price, product.fee, position.isLong);
 
-		if (price == 0) {
-			payable(position.owner).transfer(position.margin * 10**10);
-			delete positions[positionId];
-			return;
-		}
-
 		position.price = uint64(price);
 
 		emit NewPosition(
@@ -224,8 +218,29 @@ contract Trading {
 
 	function deletePosition(uint256 positionId) external onlyOracle {
 		Position storage position = positions[positionId];
+		require(position.price == 0, "!settled");
 		payable(position.owner).transfer(position.margin * 10**10);
+
+		Product storage product = products[position.productId];
+
+		// revert exposure
+		uint256 amount = position.margin * position.leverage / 10**8;
+		if (position.isLong) {
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint48(amount);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= uint48(amount);
+			} else {
+				product.openInterestShort = 0;
+			}
+		}
+
 		delete positions[positionId];
+
 	}
 
 	function closeOrder(
@@ -589,9 +604,8 @@ contract Trading {
 
 		uint256 mainFeedPrice = _getMainFeedPrice(product);
 
-		if (mainFeedPrice == 0 || timestamp < block.timestamp - product.mainFeedStaleAfter) {
-			return 0;
-		}
+		require(mainFeedPrice > 0, "!stale");
+		require(timestamp >= block.timestamp - product.mainFeedStaleAfter, "!too-old");
 
 		// If it's too old / too different, use chainlink
 		if (
