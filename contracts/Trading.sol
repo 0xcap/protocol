@@ -44,7 +44,7 @@ contract Trading {
 		bool isLong; // 1 byte
 	}
 
-	struct CloseOrder {
+	struct Order {
 		uint256 margin;
 		bool releaseMargin;
 		bool ownerOverride;
@@ -64,7 +64,7 @@ contract Trading {
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
-	mapping(uint256 => CloseOrder) private closeOrders;
+	mapping(uint256 => Order) private closeOrders;
 
 
 	// Events
@@ -91,6 +91,12 @@ contract Trading {
 		uint256 margin, 
 		uint256 newMargin, 
 		uint256 newLeverage
+	);
+	event CloseOrder(
+		uint256 indexed positionId,
+		uint256 margin,
+		bool ownerOverride,
+		bool releaseMargin
 	);
 	event ClosePosition(
 		uint256 positionId, 
@@ -247,11 +253,18 @@ contract Trading {
 			margin = position.margin;
 		}
 
-		closeOrders[positionId] = CloseOrder({
+		closeOrders[positionId] = Order({
 			margin: margin,
 			ownerOverride: ownerOverride,
 			releaseMargin: releaseMargin
 		});
+
+		emit CloseOrder(
+			positionId,
+			margin,
+			ownerOverride,
+			releaseMargin
+		);
 
 	}
 
@@ -265,7 +278,7 @@ contract Trading {
 
 		price = _checkPrice(position.productId, price);
 
-		CloseOrder memory _closeOrder = closeOrders[positionId];
+		Order memory _closeOrder = closeOrders[positionId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
 		bool releaseMargin = _closeOrder.releaseMargin;
@@ -517,7 +530,7 @@ contract Trading {
 		uint256 price,
 		uint256 fee,
 		bool isLong
-	) internal view returns(uint256) {
+	) internal pure returns(uint256) {
 		if (isLong) {
 			return price + price * fee / 10**4;
 		} else {
