@@ -3,10 +3,11 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
-import "./interfaces/IDarkFeed.sol";
+import "./interfaces/IOracle.sol";
 import "./interfaces/ITreasury.sol";
+import "./interfaces/ITrading.sol";
 
-contract DarkFeed is IDarkFeed {
+contract Oracle is IOracle {
 
 	// Contract dependencies
 	address public owner;
@@ -29,34 +30,29 @@ contract DarkFeed is IDarkFeed {
 		owner = msg.sender;
 	}
 
-	// Price methods
-
-	function setLatestData(
-		address[] calldata feeds, 
-		uint256[] calldata _prices
+	// 
+	function openPosition(
+		uint256 positionId,
+		uint256 price
 	) external onlyOracle {
 
-		require(isActive, "!active");
+		try ITrading(trading).openPosition(positionId, price) {
 
-		require(feeds.length == _prices.length && feeds.length > 0, "!length");
-		
-		for (uint256 i = 0; i < feeds.length; i++) {
-			if (_prices[i] == 0) continue;
-			prices[feeds[i]] = _prices[i];
-			timestamps[feeds[i]] = block.timestamp;
+		} catch {
+			ITrading(trading).deletePosition(positionId);
 		}
-		
-		requestsSinceFunding++;
-		
-		if (requestsSinceFunding >= requestsPerFunding) {
-			requestsSinceFunding = 0;
-			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
-		}
-
 	}
 
-	function getLatestData(address feed) external view override returns (uint256, uint256) {
-		return (prices[feed], timestamps[feed]);
+	function closePosition(
+		uint256 positionId,
+		uint256 price
+	) external onlyOracle {
+
+		try ITrading(trading).closePosition(positionId, price) {
+
+		} catch {
+			ITrading(trading).deleteOrder(positionId);
+		}
 	}
 
 	// Owner methods
