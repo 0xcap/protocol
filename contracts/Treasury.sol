@@ -7,6 +7,7 @@ import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
 import "./interfaces/ITreasury.sol";
+import "./interfaces/ITrading.sol";
 
 // Treasury with broad powers to use revenue to push the Cap ecosystem forward through buybacks, dividends, etc. This contract can be upgraded any time, simply point to the new one in the Trading contract
 
@@ -14,6 +15,7 @@ contract Treasury is ITreasury {
 
 	// Contract dependencies
 	address public owner;
+	address public trading;
 	address public darkFeed;
 
 	// Uniswap arbitrum addresses
@@ -40,17 +42,25 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
-	function receive() external payable {
+	function receiveETH() external payable {
+	}
+
+	function fundVault(uint256 amount) external onlyOwner {
+		ITrading(trading).fundVault{value: amount}();
+	}
+
+	function fundOracle(
+		address oracle, 
+		uint256 amount
+	) external onlyDarkFeed {
+		if (amount > address(this).balance) return;
+		payable(oracle).transfer(amount);
 	}
 
 	function sendETH(
 		address destination, 
 		uint256 amount
-	) external onlyOwnerOrDarkFeed {
-		if (amount > address(this).balance) {
-			if (msg.sender == darkFeed) return;
-			revert("!balance");
-		}
+	) external onlyOwner {
 		payable(destination).transfer(amount);
 	}
 
@@ -110,6 +120,10 @@ contract Treasury is ITreasury {
 		owner = newOwner;
 	}
 
+	function setTrading(address _trading) external onlyOwner {
+		trading = _trading;
+	}
+
 	function setDarkFeed(address _darkFeed) external onlyOwner {
 		darkFeed = _darkFeed;
 	}
@@ -121,8 +135,8 @@ contract Treasury is ITreasury {
 		_;
 	}
 
-	modifier onlyOwnerOrDarkFeed() {
-		require(msg.sender == owner || msg.sender == darkFeed, "!owner|darkFeed");
+	modifier onlyDarkFeed() {
+		require(msg.sender == darkFeed, "!darkFeed");
 		_;
 	}
 

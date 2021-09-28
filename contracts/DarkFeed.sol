@@ -23,6 +23,8 @@ contract DarkFeed is IDarkFeed {
 	mapping(address => uint256) prices;
 	mapping(address => uint256) timestamps;
 
+	bool isActive = true;
+
 	constructor() {
 		owner = msg.sender;
 	}
@@ -33,6 +35,8 @@ contract DarkFeed is IDarkFeed {
 		address[] calldata feeds, 
 		uint256[] calldata _prices
 	) external onlyOracle {
+
+		require(isActive, "!active");
 
 		require(feeds.length == _prices.length && feeds.length > 0, "!length");
 		
@@ -46,7 +50,7 @@ contract DarkFeed is IDarkFeed {
 		
 		if (requestsSinceFunding >= requestsPerFunding) {
 			requestsSinceFunding = 0;
-			ITreasury(treasury).sendETH(oracle, costPerRequest * requestsPerFunding);
+			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
 		}
 
 	}
@@ -59,10 +63,12 @@ contract DarkFeed is IDarkFeed {
 
 	function setParams(
 		uint256 _requestsPerFunding, 
-		uint256 _costPerRequest
+		uint256 _costPerRequest,
+		bool _isActive
 	) external onlyOwner {
 		requestsPerFunding = _requestsPerFunding;
 		costPerRequest = _costPerRequest;
+		isActive = _isActive;
 	}
 
 	function setOwner(address newOwner) external onlyOwner {

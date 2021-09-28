@@ -15,19 +15,19 @@ contract Trading {
 
 	struct Product {
 		// 32 bytes
-		address feed; // Chainlink (and DO) feed. 20 bytes
+		address feed; // Chainlink and dark feed. 20 bytes
 		uint48 maxLeverage; // 6 bytes
 		uint16 fee; // In bps. 0.5% = 50. 2 bytes
-		uint16 skew; // In bps. 2 bytes. 0.5% skew means add 0.5% x exposure % at the max exposure side, subtract on the least exposed side. open interest long - open interest short / max exposure 
+		uint16 interest; // For 360 days, in bps. 5.35% = 535. 2 bytes
 		bool isActive; // 1 byte
-		bool doActive; // 1 byte, dark oracle active
+		bool darkFeedActive; // 1 byte, dark feed active
 		// 32 bytes
 		uint48 maxExposure; // Maximum allowed long/short imbalance. 6 bytes
 		uint48 openInterestLong; // 6 bytes
 		uint48 openInterestShort; // 6 bytes
-		uint16 doMaxDeviation; // 2 bytes, max price deviation tolerated for dark oracle vs chainlink, in bps
-		uint16 interest; // For 360 days, in bps. 5.35% = 535. 2 bytes
-		uint32 settlementTime; // In seconds. 4 bytes
+		uint32 feedStaleAfter; // 4 bytes
+		uint16 darkFeedStaleAfter; // 2 bytes
+		uint16 darkFeedMaxDeviation; // 2 bytes
 		uint16 minTradeDuration; // In seconds. 2 bytes
 		uint16 liquidationThreshold; // In bps. 8000 = 80%. 2 bytes
 		uint16 liquidationBounty; // In bps. 500 = 5%. 2 bytes
@@ -51,17 +51,14 @@ contract Trading {
 	address public treasury;
 	address public darkFeed;
 
-	uint256 public MIN_MARGIN = 100000; // 0.001 ETH - should be configurable
-	uint256 public DARK_ORACLE_STALE_PERIOD = 30 * 60; // 30 min - should be configurable
-	//uint256 public FORGOTTEN_POSITION_THRESHOLD = 730 days; // positions can be liquidated by anyone after this time, to avoid buildup from lost wallets, etc.
-
-	uint256 public nextPositionId; // Incremental
+	// 32 bytes
+	uint64 public vaultBalance;
+	uint64 public vaultThreshold = 10 * 10**8; // 10 ETH
+	uint64 public minMargin = 100000; // 0.001 ETH
+	uint64 public nextPositionId; // Incremental
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
-
-	uint256 vaultBalance;
-	uint256 vaultThreshold;
 
 	// Events
 	event NewPosition(
@@ -118,13 +115,13 @@ contract Trading {
 		uint256 margin = msg.value / 10**10; // truncate to 8 decimals
 
 		// Check params
-		require(margin >= MIN_MARGIN, "!margin");
-		require(leverage >= 1 * 10**8, "!leverage");
+		require(margin >= minMargin, "!margin");
+		require(leverage >= 10**8, "!leverage");
 
 		// Check product
 		Product storage product = products[productId];
 		require(product.isActive, "!product-active");
-		require(leverage <= uint256(product.maxLeverage), "!max-leverage");
+		require(leverage <= product.maxLeverage, "!max-leverage");
 
 		// Check exposure
 		uint256 amount = margin * leverage / 10**8;
@@ -132,18 +129,18 @@ contract Trading {
 		if (isLong) {
 			product.openInterestLong += uint48(amount);
 			require(
-				uint256(product.openInterestLong) <= 
-				uint256(product.maxExposure) + uint256(product.openInterestShort)
+				product.openInterestLong <= 
+				product.maxExposure + product.openInterestShort
 			, "!exposure-long");
 		} else {
 			product.openInterestShort += uint48(amount);
 			require(
-				uint256(product.openInterestShort) <= 
-				uint256(product.maxExposure) + uint256(product.openInterestLong)
+				product.openInterestShort <= 
+				product.maxExposure + product.openInterestLong
 			, "!exposure-short");
 		}
 
-		uint256 price = _getPriceWithFee(productId, product, isLong);
+		uint256 price = _getPriceWithFee(product, isLong);
 		
 		address user = msg.sender;
 
@@ -176,16 +173,16 @@ contract Trading {
 		uint256 margin = msg.value / 10**10; // truncate to 8 decimals
 
 		// Check params
-		require(margin >= MIN_MARGIN, "!margin");
+		require(margin >= minMargin, "!margin");
 
 		// Check position
 		Position storage position = positions[positionId];
 		require(msg.sender == position.owner, "!owner");
 
 		// New position params
-		uint256 newMargin = uint256(position.margin) + margin;
-		uint256 newLeverage = uint256(position.leverage) * uint256(position.margin) / newMargin;
-		require(newLeverage >= 1 * 10**8, "!low-leverage");
+		uint256 newMargin = position.margin + margin;
+		uint256 newLeverage = position.leverage * position.margin / newMargin;
+		require(newLeverage >= 10**8, "!low-leverage");
 
 		position.margin = uint64(newMargin);
 		position.leverage = uint64(newLeverage);
@@ -208,9 +205,9 @@ contract Trading {
 	) external {
 
 		// Check params
-		require(margin >= MIN_MARGIN, "!margin");
+		require(margin >= minMargin, "!margin");
 
-		// Governance can release-margin close on any position to protect from erroneous profits
+		// Governance can release-margin close any position to protect from malicious profits
 		bool ownerOverride;
 		if (msg.sender == owner) {
 			ownerOverride = true;
@@ -222,32 +219,18 @@ contract Trading {
 		require(ownerOverride || msg.sender == position.owner, "!owner");
 
 		// Check product
-		Product storage product = products[uint256(position.productId)];
+		Product storage product = products[position.productId];
 		require(
-			block.timestamp >= uint256(position.timestamp) + uint256(product.minTradeDuration)
+			block.timestamp >= position.timestamp + product.minTradeDuration
 		, "!duration");
 		
 		bool isFullClose;
-		if (margin >= uint256(position.margin)) {
-			margin = uint256(position.margin);
+		if (margin >= position.margin) {
+			margin = position.margin;
 			isFullClose = true;
 		}
 
-		if (position.isLong) {
-			if (uint256(product.openInterestLong) >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestLong -= uint48(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (uint256(product.openInterestShort) >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestShort -= uint48(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
-		uint256 price = _getPriceWithFee(position.productId, product, !position.isLong);
+		uint256 price = _getPriceWithFee(product, !position.isLong);
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
@@ -255,55 +238,55 @@ contract Trading {
 			revert("!override");
 		}
 
-		bool isLiquidatable = _checkLiquidation(position, uint256(product.liquidationThreshold), 0);
+		position.margin -= uint64(margin);
 
-		if (isLiquidatable) {
-			margin = uint256(position.margin);
-			pnl = uint256(position.margin);
-			pnlIsNegative = true;
-			isFullClose = true;
+		// Set exposure
+		uint256 amount = margin * position.leverage / 10**8;
+		if (position.isLong) {
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint48(amount);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= amount);
+			} else {
+				product.openInterestShort = 0;
+			}
 		}
-
-		// Update vault
-
-		// vault in this contract. simply balance tracking, no drawdown, etc. Excess balance beyond vaultThreshold goes to treasury
 
 		if (pnlIsNegative) {
 			_creditVault(pnl);
-			if (pnl < margin) payable(position.owner).transfer((margin - pnl) * 10**10);
+			if (pnl < margin) {
+				payable(position.owner).transfer((margin - pnl) * 10**10);
+			}
 		} else {
-			
 			if (releaseMargin) {
-				// When there's not enough funds in the vault, user can choose to receive their margin without profit
+				// User can choose to receive their margin without profit in edge cases
 				pnl = 0;
 			}
-				
 			require(pnl <= vaultBalance, "!vault-insufficient");
-
-			vaultBalance -= pnl;
-
+			vaultBalance -= uint64(pnl);
 			payable(position.owner).transfer((margin + pnl) * 10**10);
-			
 		}
 
 		emit ClosePosition(
 			positionId, 
 			position.owner, 
-			uint256(position.productId), 
+			position.productId, 
 			isFullClose,
 			price, 
-			uint256(position.price),
+			position.price,
 			margin, 
-			uint256(position.leverage), 
+			position.leverage, 
 			pnl, 
 			pnlIsNegative, 
-			isLiquidatable
+			false
 		);
 
 		if (isFullClose) {
 			delete positions[positionId];
-		} else {
-			position.margin -= uint64(margin);
 		}
 
 	}
@@ -325,29 +308,30 @@ contract Trading {
 				continue;
 			}
 
-			Product storage product = products[uint256(position.productId)];
+			Product storage product = products[position.productId];
 
-			// Liquidations can only happen at the chainlink price, avoiding dark oracle liquidations
-			uint256 price = getLatestPrice(position.productId, true);
+			// Liquidations can only happen at the chainlink price, avoiding dark feed liquidations
+			uint256 price = _getFeedPrice(product, true);
 
-			if (_checkLiquidation(position, uint256(product.liquidationThreshold), price)) {
+			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
-				uint256 vaultReward = uint256(position.margin) * (10**4 - uint256(product.liquidationBounty)) / 10**4;
+			if (pnlIsNegative && pnl >= position.margin * product.liquidationThreshold / 10**4) {
+
+				uint256 vaultReward = position.margin * (10**4 - product.liquidationBounty) / 10**4;
 				totalVaultReward += uint96(vaultReward);
 
-				uint256 liquidatorReward = uint256(position.margin) - vaultReward;
+				uint256 liquidatorReward = position.margin - vaultReward;
 				totalLiquidatorReward += liquidatorReward;
 
-				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
-
+				uint256 amount = position.margin * position.leverage / 10**8;
 				if (position.isLong) {
-					if (uint256(product.openInterestLong) >= amount) {
+					if (product.openInterestLong >= amount) {
 						product.openInterestLong -= uint48(amount);
 					} else {
 						product.openInterestLong = 0;
 					}
 				} else {
-					if (uint256(product.openInterestShort) >= amount) {
+					if (product.openInterestShort >= amount) {
 						product.openInterestShort -= uint48(amount);
 					} else {
 						product.openInterestShort = 0;
@@ -357,13 +341,13 @@ contract Trading {
 				emit ClosePosition(
 					positionId, 
 					position.owner, 
-					uint256(position.productId), 
+					position.productId, 
 					true,
 					price, 
-					uint256(position.price),
-					uint256(position.margin), 
-					uint256(position.leverage), 
-					uint256(position.margin),
+					position.price,
+					position.margin, 
+					position.leverage, 
+					position.margin,
 					true,
 					true
 				);
@@ -373,8 +357,8 @@ contract Trading {
 				emit PositionLiquidated(
 					positionId, 
 					liquidator, 
-					uint256(vaultReward), 
-					uint256(liquidatorReward)
+					vaultReward, 
+					liquidatorReward
 				);
 
 			}
@@ -391,20 +375,25 @@ contract Trading {
 
 	}
 
-	function _creditVault(uint256 amount) internal {
-		// and send excess to treasury
-		if (amount == 0) return;
+	function fundVault() external payable {
+		require(msg.value > 0, "!value");
+		vaultBalance += msg.value / 10**10;
+	}
 
+	// Internal methods
+
+	function _creditVault(uint256 amount) internal {
+		if (amount == 0) return;
+		// send excess to treasury
 		if (vaultBalance + amount > vaultThreshold) {
 			uint256 excess = vaultBalance + amount - vaultThreshold;
-			ITreasury(treasury).receive{excess * 10**10}();
 			if (vaultBalance != vaultThreshold) {
 				vaultBalance = vaultThreshold;
 			}
+			ITreasury(treasury).receiveETH{value: excess * 10**10}();
 		} else {
 			vaultBalance += amount;
 		}
-	
 	}
 
 	function _getPnL(
@@ -446,38 +435,22 @@ contract Trading {
 	}
 
 	function _getPriceWithFee(
-		uint256 productId,
 		Product calldata product, 
 		bool isLong,
 	) internal returns(uint256) {
-		uint256 price = getLatestPrice(productId, false);
-		uint256 skew;
+		uint256 price = _getFeedPrice(product, false);
 		if (isLong) {
-			if (product.openInterestLong > product.openInterestShort) {
-				skew = product.skew * (product.openInterestLong - product.openInterestShort) / maxExposure;
-				return price + price * product.fee / 10**4 + price * skew / 10**4;
-			} else if (product.openInterestLong < product.openInterestShort) {
-				skew = product.skew * (product.openInterestShort - product.openInterestLong) / maxExposure;
-				return price + price * product.fee / 10**4 - price * skew / 10**4;
-			} else {
-				return price + price * product.fee / 10**4;
-			}
+			return price + price * product.fee / 10**4;
 		} else {
-			if (product.openInterestLong > product.openInterestShort) {
-				skew = product.skew * (product.openInterestLong - product.openInterestShort) / maxExposure;
-				return price + price * product.fee / 10**4 - price * skew / 10**4;
-			} else if (product.openInterestLong < product.openInterestShort) {
-				skew = product.skew * (product.openInterestShort - product.openInterestLong) / maxExposure;
-				return price + price * product.fee / 10**4 + price * skew / 10**4;
-			} else {
-				return price + price * product.fee / 10**4;
-			}
+			return price - price * product.fee / 10**4;
 		}
 	}
 
-	function getLatestPrice(uint256 productId, bool useChainlink) public view returns (uint256) {
+	function _getFeedPrice(
+		Product calldata product, 
+		bool useChainlink
+	) internal view returns (uint256) {
 
-		Product memory product = products[productId];
 		require(product.feed != address(0), '!feed-error');
 
 		// Get chainlink price
@@ -493,7 +466,8 @@ contract Trading {
 		require(price > 0, '!price');
 		require(timeStamp > 0, '!timeStamp');
 
-		// TODO: deal with stale chainlink price 
+		// Deal with stale chainlink price 
+		require(timeStamp > block.timestamp - chainlinkStaleAfter, "!chainlink-stale");
 
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 
@@ -511,8 +485,6 @@ contract Trading {
 		if (product.doActive) {
 			// Dark oracle active
 
-			// TODO: pay DO from Treasury
-
 			(
 				uint256 doPrice, 
 				uint256 doTimestamp
@@ -521,7 +493,7 @@ contract Trading {
 			// If it's too old / too different, use chainlink
 			if (
 				doPrice == 0 ||
-				doTimestamp < block.timestamp - DARK_ORACLE_STALE_PERIOD ||
+				doTimestamp < block.timestamp - darkFeedStaleAfter ||
 				doPrice > chainLinkPrice + chainLinkPrice * product.doMaxDeviation / 10**4 ||
 				doPrice < chainLinkPrice - chainLinkPrice * product.doMaxDeviation / 10**4
 			) {
@@ -536,32 +508,16 @@ contract Trading {
 
 	}
 
+	// Called from client
+	function getLatestPrice(uint256 productId, bool useChainlink) external view returns(uint256) {
+		Product storage product = products[productId];
+		return _getFeedPrice(product, useChainlink);
+	}
+
 	function _calculateInterest(uint256 amount, uint256 timestamp, uint256 interest) internal view returns (uint256) {
 		if (block.timestamp < timestamp + 900) return 0;
 		return amount * interest * (block.timestamp - timestamp) / (10**4 * 360 days);
 	}
-
-	function _checkLiquidation(
-		Position memory position, 
-		uint256 liquidationThreshold,
-		uint256 price,
-		uint256 interest
-	) internal pure returns (bool) {
-
-		if (price == 0) {
-			price = getLatestPrice(position.productId, true);
-		}
-
-		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, interest);
-		
-		if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
-			return true;
-		} else {
-			return false;
-		}
-
-	}
-
 
 	// Getters
 
@@ -578,18 +534,17 @@ contract Trading {
 		return _positions;
 	}
 
-	// Fund vault simply by sending ETH to this contract
-	function() public payable {
-		vaultBalance += msg.value / 10**10;
-	}
-
 	// Governance methods
 
-	// TODO: extra product attributes
-
-	function updateVaultThreshold(uint256 threshold) external onlyOwner {
-		vaultThreshold = threshold;
+	function updateMinMargin(uint256 _minMargin) external onlyOwner {
+		minMargin = _minMargin;
 	}
+
+	function updateVaultThreshold(uint256 _vaultThreshold) external onlyOwner {
+		vaultThreshold = _vaultThreshold;
+	}
+
+	// TODO: extra product attributes
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
 
@@ -598,7 +553,6 @@ contract Trading {
 
 		require(_product.maxLeverage > 0, "!max-leverage");
 		require(_product.feed != address(0), "!feed");
-		require(_product.settlementTime > 0, "!settlementTime");
 		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		products[productId] = Product({
@@ -610,7 +564,6 @@ contract Trading {
 			openInterestLong: 0,
 			openInterestShort: 0,
 			interest: _product.interest,
-			settlementTime: _product.settlementTime,
 			minTradeDuration: _product.minTradeDuration,
 			liquidationThreshold: _product.liquidationThreshold,
 			liquidationBounty: _product.liquidationBounty
@@ -639,6 +592,14 @@ contract Trading {
 		product.liquidationThreshold = _product.liquidationThreshold;
 		product.liquidationBounty = _product.liquidationBounty;
 	
+	}
+
+	function setTreasury(address _treasury) external onlyOwner {
+		treasury = _treasury;
+	}
+
+	function setDarkFeed(address _darkFeed) external onlyOwner {
+		darkFeed = _darkFeed;
 	}
 
 	function setOwner(address newOwner) external onlyOwner {
