@@ -25,7 +25,7 @@ contract Trading {
 		uint48 maxExposure; // Maximum allowed long/short imbalance. 6 bytes
 		uint48 openInterestLong; // 6 bytes
 		uint48 openInterestShort; // 6 bytes
-		uint32 feedStaleAfter; // 4 bytes
+		uint32 mainFeedStaleAfter; // 4 bytes
 		uint16 darkFeedStaleAfter; // 2 bytes
 		uint16 darkFeedMaxDeviation; // 2 bytes
 		uint16 minTradeDuration; // In seconds. 2 bytes
@@ -404,23 +404,27 @@ contract Trading {
 	) internal returns(uint256 pnl, bool pnlIsNegative) {
 
 		if (position.isLong) {
-			if (price >= uint256(position.price)) {
-				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+			if (price >= position.price) {
+				pnl = margin * position.leverage * (price - position.price) / (position.price * 10**8);
 			} else {
-				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				pnl = margin * position.leverage * (position.price - price) / (position.price * 10**8);
 				pnlIsNegative = true;
 			}
 		} else {
-			if (price > uint256(position.price)) {
-				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+			if (price > position.price) {
+				pnl = margin * position.leverage * (price - position.price) / (position.price * 10**8);
 				pnlIsNegative = true;
 			} else {
-				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				pnl = margin * position.leverage * (position.price - price) / (position.price * 10**8);
 			}
 		}
 
 		// Subtract interest from P/L
-		uint256 _interest = _calculateInterest(margin * uint256(position.leverage) / 10**8, uint256(position.timestamp), uint256(interest));
+		uint256 _interest;
+		if (block.timestamp >= timestamp + 900) {
+			_interest = margin * position.leverage * interest * (block.timestamp - position.timestamp) / (10**12 * 360 days);
+		}
+
 		if (pnlIsNegative) {
 			pnl += _interest;
 		} else if (pnl < _interest) {
@@ -448,7 +452,7 @@ contract Trading {
 
 	function _getFeedPrice(
 		Product calldata product, 
-		bool useChainlink
+		bool useMainFeed
 	) internal view returns (uint256) {
 
 		require(product.feed != address(0), '!feed-error');
@@ -467,56 +471,51 @@ contract Trading {
 		require(timeStamp > 0, '!timeStamp');
 
 		// Deal with stale chainlink price 
-		require(timeStamp > block.timestamp - chainlinkStaleAfter, "!chainlink-stale");
+		require(timeStamp > block.timestamp - product.mainFeedStaleAfter, "!feed-stale");
 
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 
-		uint256 chainLinkPrice;
+		uint256 feedPrice;
 		if (decimals != 8) {
-			chainLinkPrice = uint256(price) * (10**8) / (10**uint256(decimals));
+			feedPrice = uint256(price) * 10**8 / 10**decimals;
 		} else {
-			chainLinkPrice = uint256(price);
+			feedPrice = uint256(price);
 		}
 
-		if (useChainlink) {
-			return chainLinkPrice;
+		if (useMainFeed) {
+			return feedPrice;
 		}
 
-		if (product.doActive) {
+		if (product.darkFeedActive) {
 			// Dark oracle active
 
 			(
-				uint256 doPrice, 
-				uint256 doTimestamp
+				uint256 darkFeedPrice, 
+				uint256 darkFeedTimestamp
 			) = IDarkFeed(darkFeed).getLatestData(product.feed);
 
 			// If it's too old / too different, use chainlink
 			if (
-				doPrice == 0 ||
-				doTimestamp < block.timestamp - darkFeedStaleAfter ||
-				doPrice > chainLinkPrice + chainLinkPrice * product.doMaxDeviation / 10**4 ||
-				doPrice < chainLinkPrice - chainLinkPrice * product.doMaxDeviation / 10**4
+				darkFeedPrice == 0 ||
+				darkFeedTimestamp < block.timestamp - product.darkFeedStaleAfter ||
+				darkFeedPrice > feedPrice + feedPrice * product.darkFeedMaxDeviation / 10**4 ||
+				darkFeedPrice < feedPrice - feedPrice * product.darkFeedMaxDeviation / 10**4
 			) {
-				return chainLinkPrice;
+				return feedPrice;
 			}
 
-			return doPrice;
+			return darkFeedPrice;
 
 		} else {
-			return chainLinkPrice;
+			return feedPrice;
 		}
 
 	}
 
 	// Called from client
-	function getLatestPrice(uint256 productId, bool useChainlink) external view returns(uint256) {
-		Product storage product = products[productId];
-		return _getFeedPrice(product, useChainlink);
-	}
-
-	function _calculateInterest(uint256 amount, uint256 timestamp, uint256 interest) internal view returns (uint256) {
-		if (block.timestamp < timestamp + 900) return 0;
-		return amount * interest * (block.timestamp - timestamp) / (10**4 * 360 days);
+	function getLatestPrice(uint256 productId, bool useMainFeed) external view returns(uint256) {
+		Product memory product = products[productId];
+		return _getFeedPrice(product, useMainFeed);
 	}
 
 	// Getters
@@ -544,8 +543,6 @@ contract Trading {
 		vaultThreshold = _vaultThreshold;
 	}
 
-	// TODO: extra product attributes
-
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
 
 		Product memory product = products[productId];
@@ -553,17 +550,24 @@ contract Trading {
 
 		require(_product.maxLeverage > 0, "!max-leverage");
 		require(_product.feed != address(0), "!feed");
+		require(_product.mainFeedStaleAfter > 0, "!mainFeedStaleAfter");
+		require(_product.darkFeedStaleAfter > 0, "!darkFeedStaleAfter");
+		require(_product.darkFeedMaxDeviation > 0, "!darkFeedMaxDeviation");
 		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		products[productId] = Product({
 			feed: _product.feed,
 			maxLeverage: _product.maxLeverage,
 			fee: _product.fee,
+			interest: _product.interest,
 			isActive: true,
+			darkFeedActive: _product.darkFeedActive,
 			maxExposure: _product.maxExposure,
 			openInterestLong: 0,
 			openInterestShort: 0,
-			interest: _product.interest,
+			mainFeedStaleAfter: _product.mainFeedStaleAfter,
+			darkFeedStaleAfter: _product.darkFeedStaleAfter,
+			darkFeedMaxDeviation: _product.darkFeedMaxDeviation,
 			minTradeDuration: _product.minTradeDuration,
 			liquidationThreshold: _product.liquidationThreshold,
 			liquidationBounty: _product.liquidationBounty
@@ -578,16 +582,21 @@ contract Trading {
 
 		require(_product.maxLeverage >= 1 * 10**8, "!max-leverage");
 		require(_product.feed != address(0), "!feed");
-		require(_product.settlementTime > 0, "!settlementTime");
+		require(_product.mainFeedStaleAfter > 0, "!mainFeedStaleAfter");
+		require(_product.darkFeedStaleAfter > 0, "!darkFeedStaleAfter");
+		require(_product.darkFeedMaxDeviation > 0, "!darkFeedMaxDeviation");
 		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		product.feed = _product.feed;
 		product.maxLeverage = _product.maxLeverage;
 		product.fee = _product.fee;
-		product.isActive = _product.isActive;
-		product.maxExposure = _product.maxExposure;
 		product.interest = _product.interest;
-		product.settlementTime = _product.settlementTime;
+		product.isActive = _product.isActive;
+		product.darkFeedActive = _product.darkFeedActive;
+		product.maxExposure = _product.maxExposure;
+		product.mainFeedStaleAfter = _product.mainFeedStaleAfter;
+		product.darkFeedStaleAfter = _product.darkFeedStaleAfter;
+		product.darkFeedMaxDeviation = _product.darkFeedMaxDeviation;
 		product.minTradeDuration = _product.minTradeDuration;
 		product.liquidationThreshold = _product.liquidationThreshold;
 		product.liquidationBounty = _product.liquidationBounty;

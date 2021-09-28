@@ -9,7 +9,7 @@ import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
-// Treasury with broad powers to use revenue to push the Cap ecosystem forward through buybacks, dividends, etc. This contract can be upgraded any time, simply point to the new one in the Trading contract
+// Treasury with methods to use revenue to push the Cap ecosystem forward through buybacks, dividends, etc. This contract can be upgraded any time, simply point to the new one in the Trading contract
 
 contract Treasury is ITreasury {
 
@@ -113,6 +113,11 @@ contract Treasury is ITreasury {
 	    );
 
 	}
+
+	fallback() external payable {}
+
+	receive() external payable {}
+
 
 	// Owner methods
 
