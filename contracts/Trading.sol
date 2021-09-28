@@ -48,6 +48,7 @@ contract Trading {
 		uint256 margin;
 		bool releaseMargin;
 		bool ownerOverride;
+		uint256 timestamp;
 	}
 
 	// Variables
@@ -94,6 +95,7 @@ contract Trading {
 	);
 	event CloseOrder(
 		uint256 indexed positionId,
+		uint256 indexed productId,
 		uint256 margin,
 		bool ownerOverride,
 		bool releaseMargin
@@ -197,8 +199,14 @@ contract Trading {
 
 		Product memory product = products[position.productId];
 
-		price = _checkPrice(product, price);
+		price = _checkPrice(product, position.timestamp, price);
 		price = _getPriceWithFee(price, product.fee, position.isLong);
+
+		if (price == 0) {
+			payable(position.owner).transfer(position.margin * 10**10);
+			delete positions[positionId];
+			return;
+		}
 
 		position.price = uint64(price);
 
@@ -256,11 +264,13 @@ contract Trading {
 		closeOrders[positionId] = Order({
 			margin: margin,
 			ownerOverride: ownerOverride,
-			releaseMargin: releaseMargin
+			releaseMargin: releaseMargin,
+			timestamp: block.timestamp
 		});
 
 		emit CloseOrder(
 			positionId,
+			position.productId,
 			margin,
 			ownerOverride,
 			releaseMargin
@@ -273,17 +283,18 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-
 		Order memory _closeOrder = closeOrders[positionId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
+
+		Position storage position = positions[positionId];
+		require(position.margin > 0, "!position");
+
 		bool releaseMargin = _closeOrder.releaseMargin;
 
 		Product storage product = products[position.productId];
 
-		price = _checkPrice(product, price);
+		price = _checkPrice(product, _closeOrder.timestamp, price);
 		price = _getPriceWithFee(price, product.fee, !position.isLong);		
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
@@ -400,6 +411,8 @@ contract Trading {
 
 			// Liquidations can only happen at the chainlink price, avoiding dark feed liquidations
 			uint256 price = _getMainFeedPrice(product);
+
+			if (price == 0) continue;
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
@@ -541,7 +554,7 @@ contract Trading {
 		Product memory product
 	) internal view returns (uint256) {
 
-		require(product.feed != address(0), '!feed-error');
+		if (product.feed == address(0)) return 0;
 
 		// Get chainlink price
 
@@ -553,11 +566,7 @@ contract Trading {
             
 		) = AggregatorV3Interface(product.feed).latestRoundData();
 
-		require(price > 0, '!price');
-		require(timeStamp > 0, '!timeStamp');
-
-		// Deal with stale chainlink price 
-		require(timeStamp > block.timestamp - product.mainFeedStaleAfter, "!feed-stale");
+		if (price <= 0 || timeStamp == 0 || timeStamp < block.timestamp - product.mainFeedStaleAfter) return 0;
 
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 
@@ -574,10 +583,15 @@ contract Trading {
 
 	function _checkPrice(
 		Product memory product,
+		uint256 timestamp,
 		uint256 price
 	) internal view returns(uint256) {
 
 		uint256 mainFeedPrice = _getMainFeedPrice(product);
+
+		if (mainFeedPrice == 0 || timestamp < block.timestamp - product.mainFeedStaleAfter) {
+			return 0;
+		}
 
 		// If it's too old / too different, use chainlink
 		if (

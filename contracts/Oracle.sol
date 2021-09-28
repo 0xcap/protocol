@@ -35,23 +35,31 @@ contract Oracle is IOracle {
 		uint256 positionId,
 		uint256 price
 	) external onlyOracle {
-
 		try ITrading(trading).openPosition(positionId, price) {
 
 		} catch {
 			ITrading(trading).deletePosition(positionId);
 		}
+		_checkRequests();
 	}
 
 	function closePosition(
 		uint256 positionId,
 		uint256 price
 	) external onlyOracle {
-
 		try ITrading(trading).closePosition(positionId, price) {
 
 		} catch {
 			ITrading(trading).deleteOrder(positionId);
+		}
+		_checkRequests();
+	}
+
+	function _checkRequests() internal {
+		requestsSinceFunding++;
+		if (requestsSinceFunding >= requestsPerFunding) {
+			requestsSinceFunding = 0;
+			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
 		}
 	}
 
