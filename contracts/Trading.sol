@@ -60,6 +60,9 @@ contract Trading {
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
 
+	uint256 vaultBalance;
+	uint256 vaultThreshold;
+
 	// Events
 	event NewPosition(
 		uint256 indexed positionId, 
@@ -95,17 +98,6 @@ contract Trading {
 		address indexed liquidator, 
 		uint256 vaultReward, 
 		uint256 liquidatorReward
-	);
-	event ProductAdded(
-		uint256 productId, 
-		Product product
-	);
-	event ProductUpdated(
-		uint256 productId, 
-		Product product
-	);
-	event OwnerUpdated(
-		address newOwner
 	);
 
 	// Constructor
@@ -274,8 +266,10 @@ contract Trading {
 
 		// Update vault
 
+		// vault in this contract. simply balance tracking, no drawdown, etc. Excess balance beyond vaultThreshold goes to treasury
+
 		if (pnlIsNegative) {
-			_sendToTreasury(pnl);
+			_creditVault(pnl);
 			if (pnl < margin) payable(position.owner).transfer((margin - pnl) * 10**10);
 		} else {
 			
@@ -283,9 +277,12 @@ contract Trading {
 				// When there's not enough funds in the vault, user can choose to receive their margin without profit
 				pnl = 0;
 			}
-			
-			ITreasury(treasury).pay(position.owner, pnl);
-			payable(position.owner).transfer(margin * 10**10); // pay margin from this contract
+				
+			require(pnl <= vaultBalance, "!vault-insufficient");
+
+			vaultBalance -= pnl;
+
+			payable(position.owner).transfer((margin + pnl) * 10**10);
 			
 		}
 
@@ -385,7 +382,7 @@ contract Trading {
 		}
 
 		if (totalVaultReward > 0) {
-			_sendToTreasury(totalVaultReward);
+			_creditVault(totalVaultReward);
 		}
 
 		if (totalLiquidatorReward > 0) {
@@ -394,9 +391,20 @@ contract Trading {
 
 	}
 
-	function _sendToTreasury(uint256 amount) internal {
+	function _creditVault(uint256 amount) internal {
+		// and send excess to treasury
 		if (amount == 0) return;
-		ITreasury(treasury).receive{amount * 10**10}();
+
+		if (vaultBalance + amount > vaultThreshold) {
+			uint256 excess = vaultBalance + amount - vaultThreshold;
+			ITreasury(treasury).receive{excess * 10**10}();
+			if (vaultBalance != vaultThreshold) {
+				vaultBalance = vaultThreshold;
+			}
+		} else {
+			vaultBalance += amount;
+		}
+	
 	}
 
 	function _getPnL(
@@ -570,9 +578,18 @@ contract Trading {
 		return _positions;
 	}
 
+	// Fund vault simply by sending ETH to this contract
+	function() public payable {
+		vaultBalance += msg.value / 10**10;
+	}
+
 	// Governance methods
 
 	// TODO: extra product attributes
+
+	function updateVaultThreshold(uint256 threshold) external onlyOwner {
+		vaultThreshold = threshold;
+	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
 
@@ -599,8 +616,6 @@ contract Trading {
 			liquidationBounty: _product.liquidationBounty
 		});
 
-		emit ProductAdded(productId, products[productId]);
-
 	}
 
 	function updateProduct(uint256 productId, Product memory _product) external onlyOwner {
@@ -623,14 +638,11 @@ contract Trading {
 		product.minTradeDuration = _product.minTradeDuration;
 		product.liquidationThreshold = _product.liquidationThreshold;
 		product.liquidationBounty = _product.liquidationBounty;
-		
-		emit ProductUpdated(productId, product);
 	
 	}
 
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;
-		emit OwnerUpdated(newOwner);
 	}
 
 	modifier onlyOwner() {

@@ -1,4 +1,4 @@
-+// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
@@ -14,7 +14,6 @@ contract Treasury is ITreasury {
 
 	// Contract dependencies
 	address public owner;
-	address public trading;
 	address public darkFeed;
 
 	// Uniswap arbitrum addresses
@@ -24,14 +23,7 @@ contract Treasury is ITreasury {
 	// Arbitrum
 	address public constant WETH9 = 0x82af49447d8a07e3bd95bd0d56f35241523fbab1;
 
-	//uint256 public buybackPeriod = 7 days;
-	//uint256 public maxBuybackShare = 8000;
-
-	uint256 dailyOutflow;
-	uint256 public maxDailyOutflow; // in bps
-	uint256 public lastCheckpointTime;
-
-	// TODO: use treasury directly as vault, no max drawdown, etc. Treasury can sell assets, hedge, support Cap ecosystem, etc.
+	// Treasury can sell assets, hedge, support Cap ecosystem, etc.
 
 	// Events
 
@@ -51,29 +43,12 @@ contract Treasury is ITreasury {
 	function receive() external payable {
 	}
 
-	function pay(
-		address user, 
-		uint256 amount
-	) external onlyTrading {
-		uint256 weiBalance = address(this).balance;
-		require(amount <= weiBalance, "!vault-insufficient");
-		dailyOutflow += amount;
-		// Check maxDailyOutflow
-		if (lastCheckpointTime < block.timestamp - 24 hours) {
-			lastCheckpointTime = block.timestamp;
-			dailyOutflow = 0;
-		}
-		require(dailyOutflow <= maxDailyOutflow * weiBalance / 10**4, "!outflow");
-		payable(user).transfer(amount);
-	}
-
 	function sendETH(
 		address destination, 
 		uint256 amount
 	) external onlyOwnerOrDarkFeed {
-		uint256 weiBalance = address(this).balance;
-		if (amount > weiBalance) {
-			if (msg.sender == oracle) return;
+		if (amount > address(this).balance) {
+			if (msg.sender == darkFeed) return;
 			revert("!balance");
 		}
 		payable(destination).transfer(amount);
@@ -131,10 +106,6 @@ contract Treasury is ITreasury {
 
 	// Owner methods
 
-	function setParams(uint256 _maxDailyOutflow) external onlyOwner {
-		maxDailyOutflow = _maxDailyOutflow;
-	}
-
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;
 	}
@@ -143,19 +114,10 @@ contract Treasury is ITreasury {
 		darkFeed = _darkFeed;
 	}
 
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
 	// Modifiers
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, "!owner");
-		_;
-	}
-
-	modifier onlyTrading() {
-		require(msg.sender == trading, "!trading");
 		_;
 	}
 
