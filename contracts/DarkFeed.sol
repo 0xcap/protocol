@@ -55,7 +55,7 @@ contract DarkFeed is IDarkFeed {
 
 	}
 
-	function getLatestData(address feed) external view returns (uint256, uint256) {
+	function getLatestData(address feed) external view override returns (uint256, uint256) {
 		return (prices[feed], timestamps[feed]);
 	}
 

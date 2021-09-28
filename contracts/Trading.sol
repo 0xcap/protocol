@@ -241,16 +241,15 @@ contract Trading {
 		position.margin -= uint64(margin);
 
 		// Set exposure
-		uint256 amount = margin * position.leverage / 10**8;
 		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint48(amount);
+			if (product.openInterestLong >= margin * position.leverage / 10**8) {
+				product.openInterestLong -= uint48(margin * position.leverage / 10**8);
 			} else {
 				product.openInterestLong = 0;
 			}
 		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= amount);
+			if (product.openInterestShort >= margin * position.leverage / 10**8) {
+				product.openInterestShort -= uint48(margin * position.leverage / 10**8);
 			} else {
 				product.openInterestShort = 0;
 			}
@@ -294,12 +293,10 @@ contract Trading {
 	// Liquidate positionIds
 	function liquidatePositions(uint256[] calldata positionIds) external {
 
-		address liquidator = msg.sender;
-		uint256 length = positionIds.length;
 		uint256 totalVaultReward;
 		uint256 totalLiquidatorReward;
 
-		for (uint256 i = 0; i < length; i++) {
+		for (uint256 i = 0; i < positionIds.length; i++) {
 
 			uint256 positionId = positionIds[i];
 			Position memory position = positions[positionId];
@@ -323,16 +320,15 @@ contract Trading {
 				uint256 liquidatorReward = position.margin - vaultReward;
 				totalLiquidatorReward += liquidatorReward;
 
-				uint256 amount = position.margin * position.leverage / 10**8;
 				if (position.isLong) {
-					if (product.openInterestLong >= amount) {
-						product.openInterestLong -= uint48(amount);
+					if (product.openInterestLong >= position.margin * position.leverage / 10**8) {
+						product.openInterestLong -= uint48(position.margin * position.leverage / 10**8);
 					} else {
 						product.openInterestLong = 0;
 					}
 				} else {
-					if (product.openInterestShort >= amount) {
-						product.openInterestShort -= uint48(amount);
+					if (product.openInterestShort >= position.margin * position.leverage / 10**8) {
+						product.openInterestShort -= uint48(position.margin * position.leverage / 10**8);
 					} else {
 						product.openInterestShort = 0;
 					}
@@ -356,7 +352,7 @@ contract Trading {
 
 				emit PositionLiquidated(
 					positionId, 
-					liquidator, 
+					msg.sender, 
 					vaultReward, 
 					liquidatorReward
 				);
@@ -370,14 +366,14 @@ contract Trading {
 		}
 
 		if (totalLiquidatorReward > 0) {
-			payable(liquidator).transfer(totalLiquidatorReward * 10**10);
+			payable(msg.sender).transfer(totalLiquidatorReward * 10**10);
 		}
 
 	}
 
 	function fundVault() external payable {
 		require(msg.value > 0, "!value");
-		vaultBalance += msg.value / 10**10;
+		vaultBalance += uint64(msg.value / 10**10);
 	}
 
 	// Internal methods
@@ -392,16 +388,16 @@ contract Trading {
 			}
 			ITreasury(treasury).receiveETH{value: excess * 10**10}();
 		} else {
-			vaultBalance += amount;
+			vaultBalance += uint64(amount);
 		}
 	}
 
 	function _getPnL(
-		Position calldata position,
+		Position memory position,
 		uint256 price,
 		uint256 margin,
 		uint256 interest
-	) internal returns(uint256 pnl, bool pnlIsNegative) {
+	) internal view returns(uint256 pnl, bool pnlIsNegative) {
 
 		if (position.isLong) {
 			if (price >= position.price) {
@@ -421,7 +417,7 @@ contract Trading {
 
 		// Subtract interest from P/L
 		uint256 _interest;
-		if (block.timestamp >= timestamp + 900) {
+		if (block.timestamp >= position.timestamp + 900) {
 			_interest = margin * position.leverage * interest * (block.timestamp - position.timestamp) / (10**12 * 360 days);
 		}
 
@@ -439,9 +435,9 @@ contract Trading {
 	}
 
 	function _getPriceWithFee(
-		Product calldata product, 
-		bool isLong,
-	) internal returns(uint256) {
+		Product memory product, 
+		bool isLong
+	) internal view returns(uint256) {
 		uint256 price = _getFeedPrice(product, false);
 		if (isLong) {
 			return price + price * product.fee / 10**4;
@@ -451,7 +447,7 @@ contract Trading {
 	}
 
 	function _getFeedPrice(
-		Product calldata product, 
+		Product memory product, 
 		bool useMainFeed
 	) internal view returns (uint256) {
 
@@ -460,11 +456,11 @@ contract Trading {
 		// Get chainlink price
 
 		(
-			uint80 roundID, 
+			, 
             int price,
-            uint startedAt,
+            ,
             uint timeStamp,
-            uint80 answeredInRound
+            
 		) = AggregatorV3Interface(product.feed).latestRoundData();
 
 		require(price > 0, '!price');
@@ -536,11 +532,11 @@ contract Trading {
 	// Governance methods
 
 	function updateMinMargin(uint256 _minMargin) external onlyOwner {
-		minMargin = _minMargin;
+		minMargin = uint64(_minMargin);
 	}
 
 	function updateVaultThreshold(uint256 _vaultThreshold) external onlyOwner {
-		vaultThreshold = _vaultThreshold;
+		vaultThreshold = uint64(_vaultThreshold);
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {

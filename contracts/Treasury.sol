@@ -11,6 +11,10 @@ import "./interfaces/ITrading.sol";
 
 // Treasury with methods to use revenue to push the Cap ecosystem forward through buybacks, dividends, etc. This contract can be upgraded any time, simply point to the new one in the Trading contract
 
+interface IUniswapRouter is ISwapRouter {
+    function refundETH() external payable;
+}
+
 contract Treasury is ITreasury {
 
 	// Contract dependencies
@@ -19,11 +23,11 @@ contract Treasury is ITreasury {
 	address public darkFeed;
 
 	// Uniswap arbitrum addresses
-	ISwapRouter public immutable swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+	IUniswapRouter public constant uniswapRouter = IUniswapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 	//address public constant CAP = 0x031d35296154279dc1984dcd93e392b1f946737b;
 
 	// Arbitrum
-	address public constant WETH9 = 0x82af49447d8a07e3bd95bd0d56f35241523fbab1;
+	address public constant WETH9 = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
 	// Treasury can sell assets, hedge, support Cap ecosystem, etc.
 
@@ -42,7 +46,7 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
-	function receiveETH() external payable {
+	function receiveETH() external override payable {
 	}
 
 	function fundVault(uint256 amount) external onlyOwner {
@@ -52,7 +56,7 @@ contract Treasury is ITreasury {
 	function fundOracle(
 		address oracle, 
 		uint256 amount
-	) external onlyDarkFeed {
+	) external override onlyDarkFeed {
 		if (amount > address(this).balance) return;
 		payable(oracle).transfer(amount);
 	}
@@ -81,7 +85,7 @@ contract Treasury is ITreasury {
 	) external onlyOwner {
 
         // Approve the router to spend tokenIn
-        TransferHelper.safeApprove(tokenIn, address(swapRouter), amountIn);
+        TransferHelper.safeApprove(tokenIn, address(uniswapRouter), amountIn);
 
 		ISwapRouter.ExactInputSingleParams memory params =
 	        ISwapRouter.ExactInputSingleParams({
@@ -98,10 +102,16 @@ contract Treasury is ITreasury {
 	    uint256 amountOut;
 
 	    if (tokenIn == WETH9) {
-	    	amountOut = ISwapRouter.exactInputSingle{value: amount}(params);
+	    	amountOut = uniswapRouter.exactInputSingle{value: amountIn}(params);
 	    } else {
-	    	amountOut = ISwapRouter.exactInputSingle(params);
+	    	amountOut = uniswapRouter.exactInputSingle(params);
 	    }
+
+	    uniswapRouter.refundETH();
+
+	    // refund leftover ETH to user
+	    (bool success,) = address(this).call{ value: amountIn }("");
+	    require(success, "refund failed");
 
 	    emit Swap(
 	    	amountIn,
@@ -117,7 +127,6 @@ contract Treasury is ITreasury {
 	fallback() external payable {}
 
 	receive() external payable {}
-
 
 	// Owner methods
 

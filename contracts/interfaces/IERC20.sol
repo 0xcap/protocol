@@ -7,8 +7,8 @@ pragma solidity ^0.8.0;
  */
 interface IERC20 {
 
-    function mint(address to, uint256 amount) public;
-    function burn(address from, uint256 amount) public;
+    function mint(address to, uint256 amount) external;
+    function burn(address from, uint256 amount) external;
 
     /**
      * @dev Returns the amount of tokens in existence.
