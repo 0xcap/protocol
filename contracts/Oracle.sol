@@ -34,6 +34,15 @@ contract Oracle is IOracle {
 		owner = msg.sender;
 	}
 
+	function getPendingOrderIds() external view onlyOracle returns(
+		uint256[] memory,
+		uint256[] memory,
+		uint256[] memory, 
+		uint256[] memory
+	) {
+		return ITrading(trading).getPendingOrderIds();
+	}
+
 	function openPosition(
 		uint256 positionId,
 		uint256 price

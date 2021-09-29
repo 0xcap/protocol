@@ -12,21 +12,20 @@ contract Trading {
 
 	// Structs
 
+	// TODO: option to be unbounded by chainlink, per product, to scale possible products available
+
 	struct Product {
 		// 32 bytes
-		address feed; // Chainlink and dark feed. 20 bytes
-		uint48 maxLeverage; // 6 bytes
+		address feed; // Chainlink. Can be address(0) for no bounding. 20 bytes
+		uint56 maxLeverage; // 7 bytes
 		uint16 fee; // In bps. 0.5% = 50. 2 bytes
 		uint16 interest; // For 360 days, in bps. 5.35% = 535. 2 bytes
 		bool isActive; // 1 byte
-		bool darkFeedActive; // 1 byte, dark feed active
 		// 32 bytes
-		uint48 maxExposure; // Maximum allowed long/short imbalance. 6 bytes
-		uint48 openInterestLong; // 6 bytes
-		uint48 openInterestShort; // 6 bytes
-		uint32 mainFeedStaleAfter; // 4 bytes
-		uint16 darkFeedStaleAfter; // 2 bytes
-		uint16 darkFeedMaxDeviation; // 2 bytes
+		uint64 maxExposure; // Maximum allowed long/short imbalance. 8 bytes
+		uint64 openInterestLong; // 8 bytes
+		uint64 openInterestShort; // 8 bytes
+		uint16 oracleMaxDeviation; // 2 bytes
 		uint16 minTradeDuration; // In seconds. 2 bytes
 		uint16 liquidationThreshold; // In bps. 8000 = 80%. 2 bytes
 		uint16 liquidationBounty; // In bps. 500 = 5%. 2 bytes
@@ -45,13 +44,12 @@ contract Trading {
 	}
 
 	struct Order {
-		uint256 positionId;
-		uint256 productId;
-		uint256 margin;
+		uint80 positionId;
+		uint80 margin;
+		uint72 timestamp;
 		bool releaseMargin;
 		bool ownerOverride;
-		uint256 timestamp;
-		address owner;
+		bool isLiquidator;
 	}
 
 	// Variables
@@ -65,10 +63,9 @@ contract Trading {
 	uint64 public vaultBalance;
 	uint64 public vaultThreshold = 10 * 10**8; // 10 ETH
 	uint64 public minMargin = 100000; // 0.001 ETH
-	uint64 public maxSettlementTime = 2 minutes;
+	uint64 public maxSettlementTime = 10 minutes;
 	uint64 public nextPositionId; // Incremental
 	uint64 public nextCloseOrderId;
-
 	bool allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
@@ -107,7 +104,8 @@ contract Trading {
 		uint256 indexed productId,
 		uint256 margin,
 		bool ownerOverride,
-		bool releaseMargin
+		bool releaseMargin,
+		bool isLiquidator
 	);
 	event ClosePosition(
 		uint256 positionId, 
@@ -260,7 +258,7 @@ contract Trading {
 
 	}
 
-	function closeOrder(
+	function closeOrder( 
 		uint256 positionId, 
 		uint256 margin,
 		bool releaseMargin
@@ -269,8 +267,10 @@ contract Trading {
 		// Check params
 		require(margin >= minMargin, "!margin");
 
+		// Can't do this, this means multiple close orders can be submitted before they are settled - watch out for this
 		// Check for existing close order on this position
-		require(closeOrders[positionId].margin == 0, "!exists");
+		//Order memory _closeOrder = closeOrders[orderId];
+		//require(_closeOrder.margin == 0, "!exists");
 
 		// Governance can release-margin close any position to protect from malicious profits
 		bool ownerOverride;
@@ -279,9 +279,29 @@ contract Trading {
 			releaseMargin = true;
 		}
 
+		_closeOrder(
+			msg.sender,
+			positionId,
+			margin,
+			ownerOverride,
+			releaseMargin,
+			false
+		);
+
+	}
+
+	function _closeOrder(
+		address sender,
+		uint256 positionId,
+		uint256 margin,
+		bool ownerOverride,
+		bool releaseMargin,
+		bool isLiquidator
+	) internal {
+
 		// Check position
 		Position memory position = positions[positionId];
-		require(ownerOverride || msg.sender == position.owner, "!owner");
+		require(isLiquidator || ownerOverride || msg.sender == position.owner, "!owner");
 		require(position.margin > 0, "!position");
 
 		// Check product
@@ -296,13 +316,12 @@ contract Trading {
 
 		nextCloseOrderId++;
 		closeOrders[nextCloseOrderId] = Order({
-			positionId: positionId,
-			productId: position.productId,
-			margin: margin,
+			positionId: uint80(positionId),
+			margin: uint80(margin),
+			timestamp: uint72(block.timestamp),
 			ownerOverride: ownerOverride,
 			releaseMargin: releaseMargin,
-			timestamp: block.timestamp,
-			owner: msg.sender
+			isLiquidator: isLiquidator
 		});
 
 		emit CloseOrder(
@@ -311,7 +330,8 @@ contract Trading {
 			position.productId,
 			margin,
 			ownerOverride,
-			releaseMargin
+			releaseMargin,
+			isLiquidator
 		);
 
 	}
@@ -325,11 +345,15 @@ contract Trading {
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
 
-		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
-
 		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
+		require(msg.sender == oracle || position.owner == msg.sender, "!owner");
+
+		if (margin > position.margin) {
+			margin = position.margin;
+		}
+		require(margin > 0, "!margin");
 		
 		bool releaseMargin = _closeOrder.releaseMargin;
 
@@ -348,10 +372,23 @@ contract Trading {
 			} else {
 				price = _checkPrice(product, _closeOrder.timestamp, price);
 			}
+
+			if (price == 0) {
+				revert("!price");
+			}
 			
 			price = _getPriceWithFee(price, product.fee, !position.isLong);
 
 			(pnl, pnlIsNegative) = _getPnL(position, price, margin, product.interest);
+		}
+
+		bool isLiquidation;
+		if (pnlIsNegative && pnl >= position.margin * product.liquidationThreshold / 10**4) {
+			isLiquidation = true;
+		}
+
+		if (_closeOrder.isLiquidator && !isLiquidation) {
+			revert("!liquidation");
 		}
 
 		if (_closeOrder.ownerOverride && pnlIsNegative) {
@@ -389,7 +426,7 @@ contract Trading {
 			position.leverage, 
 			pnl, 
 			pnlIsNegative, 
-			false
+			isLiquidation
 		);
 
 		if (position.margin == 0) {
@@ -419,7 +456,8 @@ contract Trading {
 	function deletePendingOrder(uint256 orderId) external {
 		Order memory _closeOrder = closeOrders[orderId];
 		require(_closeOrder.margin > 0, "!order");
-		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
+		Position memory position = positions[_closeOrder.positionId];
+		require(msg.sender == oracle || position.owner == msg.sender, "!owner");
 		delete closeOrders[orderId];
 	}
 
@@ -473,7 +511,20 @@ contract Trading {
 			// Liquidations can only happen at the chainlink price, avoiding dark feed liquidations
 			uint256 price = _getMainFeedPrice(product);
 
-			if (price == 0) continue;
+			if (price == 0) {
+				// Chainlink not available, liquidate with dark oracle by submitting a close order
+
+				_closeOrder(
+					msg.sender,
+					positionId,
+					position.margin,
+					false,
+					false,
+					true
+				);
+
+				continue;
+			}
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
@@ -627,7 +678,7 @@ contract Trading {
             
 		) = AggregatorV3Interface(product.feed).latestRoundData();
 
-		if (price <= 0 || timeStamp == 0 || timeStamp < block.timestamp - product.mainFeedStaleAfter) return 0;
+		if (price <= 0 || timeStamp == 0) return 0;
 
 		uint8 decimals = AggregatorV3Interface(product.feed).decimals();
 
@@ -650,7 +701,7 @@ contract Trading {
 
 		uint256 mainFeedPrice = _getMainFeedPrice(product);
 		if (mainFeedPrice == 0) {
-			// return dark oracle price if chainlink stops working
+			// return dark oracle price if chainlink not available
 			require(price > 0, "!price");
 			return price;
 		}
@@ -658,8 +709,8 @@ contract Trading {
 		// If it's too different, use chainlink
 		if (
 			price == 0 ||
-			price > mainFeedPrice + mainFeedPrice * product.darkFeedMaxDeviation / 10**4 ||
-			price < mainFeedPrice - mainFeedPrice * product.darkFeedMaxDeviation / 10**4
+			price > mainFeedPrice + mainFeedPrice * product.oracleMaxDeviation / 10**4 ||
+			price < mainFeedPrice - mainFeedPrice * product.oracleMaxDeviation / 10**4
 		) {
 			return mainFeedPrice;
 		}
@@ -710,7 +761,8 @@ contract Trading {
 		for (uint256 i = nextCloseOrderId; i >= until2; i--) {
 			Order memory _closeOrder = closeOrders[i];
 			closeOrderIds[k] = i;
-			closeOrderProductIds[k] = _closeOrder.productId;
+			Position memory position = positions[_closeOrder.positionId];
+			closeOrderProductIds[k] = position.productId;
 			k++;
 		}
 
@@ -753,9 +805,7 @@ contract Trading {
 
 		require(_product.maxLeverage > 0, "!max-leverage");
 		require(_product.feed != address(0), "!feed");
-		require(_product.mainFeedStaleAfter > 0, "!mainFeedStaleAfter");
-		require(_product.darkFeedStaleAfter > 0, "!darkFeedStaleAfter");
-		require(_product.darkFeedMaxDeviation > 0, "!darkFeedMaxDeviation");
+		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		products[productId] = Product({
@@ -764,13 +814,10 @@ contract Trading {
 			fee: _product.fee,
 			interest: _product.interest,
 			isActive: true,
-			darkFeedActive: _product.darkFeedActive,
 			maxExposure: _product.maxExposure,
 			openInterestLong: 0,
 			openInterestShort: 0,
-			mainFeedStaleAfter: _product.mainFeedStaleAfter,
-			darkFeedStaleAfter: _product.darkFeedStaleAfter,
-			darkFeedMaxDeviation: _product.darkFeedMaxDeviation,
+			oracleMaxDeviation: _product.oracleMaxDeviation,
 			minTradeDuration: _product.minTradeDuration,
 			liquidationThreshold: _product.liquidationThreshold,
 			liquidationBounty: _product.liquidationBounty
@@ -785,9 +832,7 @@ contract Trading {
 
 		require(_product.maxLeverage >= 1 * 10**8, "!max-leverage");
 		require(_product.feed != address(0), "!feed");
-		require(_product.mainFeedStaleAfter > 0, "!mainFeedStaleAfter");
-		require(_product.darkFeedStaleAfter > 0, "!darkFeedStaleAfter");
-		require(_product.darkFeedMaxDeviation > 0, "!darkFeedMaxDeviation");
+		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		product.feed = _product.feed;
@@ -795,11 +840,8 @@ contract Trading {
 		product.fee = _product.fee;
 		product.interest = _product.interest;
 		product.isActive = _product.isActive;
-		product.darkFeedActive = _product.darkFeedActive;
 		product.maxExposure = _product.maxExposure;
-		product.mainFeedStaleAfter = _product.mainFeedStaleAfter;
-		product.darkFeedStaleAfter = _product.darkFeedStaleAfter;
-		product.darkFeedMaxDeviation = _product.darkFeedMaxDeviation;
+		product.oracleMaxDeviation = _product.oracleMaxDeviation;
 		product.minTradeDuration = _product.minTradeDuration;
 		product.liquidationThreshold = _product.liquidationThreshold;
 		product.liquidationBounty = _product.liquidationBounty;

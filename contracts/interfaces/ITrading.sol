@@ -19,4 +19,11 @@ interface ITrading {
 
 	function deletePendingOrder(uint256 positionId) external;
 
+	function getPendingOrderIds() external view returns(
+		uint256[] memory openOrderIds,
+		uint256[] memory openOrderProductIds,
+		uint256[] memory closeOrderIds, 
+		uint256[] memory closeOrderProductIds
+	);
+
 }
