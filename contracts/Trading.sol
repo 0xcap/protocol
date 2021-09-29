@@ -49,6 +49,7 @@ contract Trading {
 		bool releaseMargin;
 		bool ownerOverride;
 		uint256 timestamp;
+		address owner;
 	}
 
 	// Variables
@@ -57,10 +58,12 @@ contract Trading {
 	address public treasury;
 	address public oracle;
 
+	// TODO: review bytes
 	// 32 bytes
 	uint64 public vaultBalance;
 	uint64 public vaultThreshold = 10 * 10**8; // 10 ETH
 	uint64 public minMargin = 100000; // 0.001 ETH
+	uint64 public maxSettlementTime = 2 minutes;
 	uint64 public nextPositionId; // Incremental
 
 	mapping(uint256 => Product) private products;
@@ -196,6 +199,7 @@ contract Trading {
 		Position storage position = positions[positionId];
 		require(position.productId > 0, "!position");
 		require(position.price == 0, "!settled");
+		require(block.timestamp <= position.timestamp + maxSettlementTime, "!time");
 
 		Product memory product = products[position.productId];
 
@@ -216,9 +220,13 @@ contract Trading {
 
 	}
 
-	function deletePosition(uint256 positionId) external onlyOracle {
+	// User/oracle can cancel pending position
+	function deletePendingPosition(uint256 positionId) external {
+
 		Position storage position = positions[positionId];
-		require(position.price == 0, "!settled");
+		require(position.price == 0 && position.margin > 0, "!settled");
+		require(msg.sender == oracle || position.owner == msg.sender, "!owner");
+
 		payable(position.owner).transfer(position.margin * 10**10);
 
 		Product storage product = products[position.productId];
@@ -265,6 +273,7 @@ contract Trading {
 		// Check position
 		Position memory position = positions[positionId];
 		require(ownerOverride || msg.sender == position.owner, "!owner");
+		require(position.margin > 0, "!position");
 
 		// Check product
 		Product memory product = products[position.productId];
@@ -280,7 +289,8 @@ contract Trading {
 			margin: margin,
 			ownerOverride: ownerOverride,
 			releaseMargin: releaseMargin,
-			timestamp: block.timestamp
+			timestamp: block.timestamp,
+			owner: msg.sender
 		});
 
 		emit CloseOrder(
@@ -301,10 +311,10 @@ contract Trading {
 		Order memory _closeOrder = closeOrders[positionId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
+		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
 
 		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-
+		
 		bool releaseMargin = _closeOrder.releaseMargin;
 
 		Product storage product = products[position.productId];
@@ -373,7 +383,11 @@ contract Trading {
 
 	}
 
-	function deleteOrder(uint256 positionId) external onlyOracle {
+	// User/oracle can cancel pending position
+	function deletePendingOrder(uint256 positionId) external {
+		Order memory _closeOrder = closeOrders[positionId];
+		require(_closeOrder.margin > 0, "!order");
+		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
 		delete closeOrders[positionId];
 	}
 

@@ -10,13 +10,13 @@ interface ITrading {
 		uint256 price
 	) external;
 
-	function deletePosition(uint256 positionId) external;
+	function deletePendingPosition(uint256 positionId) external;
 
 	function closePosition(
 		uint256 positionId, 
 		uint256 price
 	) external;
 
-	function deleteOrder(uint256 positionId) external;
+	function deletePendingOrder(uint256 positionId) external;
 
 }

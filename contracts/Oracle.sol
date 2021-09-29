@@ -26,6 +26,12 @@ contract Oracle is IOracle {
 
 	bool isActive = true;
 
+	event SettlementError(
+		uint256 indexed positionId,
+		string reason,
+		bool isClose
+	);
+
 	constructor() {
 		owner = msg.sender;
 	}
@@ -39,7 +45,12 @@ contract Oracle is IOracle {
 		try ITrading(trading).openPosition(positionId, price) {
 
 		} catch Error(string memory reason) {
-			ITrading(trading).deletePosition(positionId);
+			ITrading(trading).deletePendingPosition(positionId);
+			emit SettlementError(
+				positionId,
+				reason,
+				false
+			);
 		}
 		_checkRequests();
 	}
@@ -51,7 +62,12 @@ contract Oracle is IOracle {
 		try ITrading(trading).closePosition(positionId, price) {
 
 		} catch Error(string memory reason) {
-			ITrading(trading).deleteOrder(positionId);
+			ITrading(trading).deletePendingOrder(positionId);
+			emit SettlementError(
+				positionId,
+				reason,
+				true
+			);
 		}
 		_checkRequests();
 	}
