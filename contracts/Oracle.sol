@@ -47,10 +47,10 @@ contract Oracle is IOracle {
 		uint256 positionId,
 		uint256 price
 	) external onlyOracle {
-		try ITrading(trading).openPosition(positionId, price) {
+		try ITrading(trading).settleNewPosition(positionId, price) {
 
 		} catch Error(string memory reason) {
-			ITrading(trading).deletePendingPosition(positionId);
+			ITrading(trading).cancelPosition(positionId);
 			emit SettlementError(
 				positionId,
 				reason,
@@ -64,10 +64,10 @@ contract Oracle is IOracle {
 		uint256 orderId,
 		uint256 price
 	) external onlyOracle {
-		try ITrading(trading).closePosition(orderId, price) {
+		try ITrading(trading).settleCloseOrder(orderId, price) {
 
 		} catch Error(string memory reason) {
-			ITrading(trading).deletePendingOrder(orderId);
+			ITrading(trading).cancelOrder(orderId);
 			emit SettlementError(
 				orderId,
 				reason,

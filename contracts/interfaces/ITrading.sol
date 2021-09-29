@@ -5,19 +5,19 @@ interface ITrading {
 
 	function fundVault() external payable;
 
-	function openPosition(
+	function settleNewPosition(
 		uint256 positionId,
 		uint256 price
 	) external;
 
-	function deletePendingPosition(uint256 positionId) external;
+	function cancelPendingPosition(uint256 positionId) external;
 
-	function closePosition(
+	function settleCloseOrder(
 		uint256 positionId, 
 		uint256 price
 	) external;
 
-	function deletePendingOrder(uint256 positionId) external;
+	function cancelOrder(uint256 positionId) external;
 
 	function getPendingOrderIds() external view returns(
 		uint256[] memory openOrderIds,
