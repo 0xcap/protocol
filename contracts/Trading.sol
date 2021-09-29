@@ -66,6 +66,8 @@ contract Trading {
 	uint64 public maxSettlementTime = 2 minutes;
 	uint64 public nextPositionId; // Incremental
 
+	bool allowGlobalMarginRelease = false;
+
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
 	mapping(uint256 => Order) private closeOrders;
@@ -227,12 +229,12 @@ contract Trading {
 		require(position.price == 0 && position.margin > 0, "!settled");
 		require(msg.sender == oracle || position.owner == msg.sender, "!owner");
 
-		payable(position.owner).transfer(position.margin * 10**10);
-
 		Product storage product = products[position.productId];
 
+		uint256 margin = position.margin;
+
 		// revert exposure
-		uint256 amount = position.margin * position.leverage / 10**8;
+		uint256 amount = margin * position.leverage / 10**8;
 		if (position.isLong) {
 			if (product.openInterestLong >= amount) {
 				product.openInterestLong -= uint48(amount);
@@ -247,7 +249,10 @@ contract Trading {
 			}
 		}
 
+		address positionOwner = position.owner;
 		delete positions[positionId];
+
+		payable(positionOwner).transfer(margin * 10**10);
 
 	}
 
@@ -306,12 +311,13 @@ contract Trading {
 	function closePosition(
 		uint256 positionId, 
 		uint256 price
-	) external onlyOracle {
+	) external {
 
 		Order memory _closeOrder = closeOrders[positionId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
-		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
+
+		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
 
 		Position storage position = positions[positionId];
 		
@@ -319,10 +325,24 @@ contract Trading {
 
 		Product storage product = products[position.productId];
 
-		price = _checkPrice(product, _closeOrder.timestamp, price);
-		price = _getPriceWithFee(price, product.fee, !position.isLong);		
+		uint256 pnl;
+		bool pnlIsNegative;
 
-		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
+		if (releaseMargin && allowGlobalMarginRelease) {
+			(pnl, pnlIsNegative) = (0, false);
+		} else {
+
+			if (block.timestamp > _closeOrder.timestamp + maxSettlementTime) {
+				// Use chainlink price to close, allowing user to manually settle and retrieve their funds regardless of dark oracle status
+				price = _getMainFeedPrice(product);
+			} else {
+				price = _checkPrice(product, _closeOrder.timestamp, price);
+			}
+			
+			price = _getPriceWithFee(price, product.fee, !position.isLong);
+
+			(pnl, pnlIsNegative) = _getPnL(position, price, margin, product.interest);
+		}
 
 		if (_closeOrder.ownerOverride && pnlIsNegative) {
 			// Can't release margin on pnl negative position
@@ -346,24 +366,11 @@ contract Trading {
 			}
 		}
 
-		if (pnlIsNegative) {
-			_creditVault(pnl);
-			if (pnl < margin) {
-				payable(position.owner).transfer((margin - pnl) * 10**10);
-			}
-		} else {
-			if (releaseMargin) {
-				// User can choose to receive their margin without profit in edge cases
-				pnl = 0;
-			}
-			require(pnl <= vaultBalance, "!vault-insufficient");
-			vaultBalance -= uint64(pnl);
-			payable(position.owner).transfer((margin + pnl) * 10**10);
-		}
+		address positionOwner = position.owner;
 
 		emit ClosePosition(
 			positionId, 
-			position.owner, 
+			positionOwner, 
 			position.productId, 
 			position.margin == 0,
 			price, 
@@ -381,9 +388,24 @@ contract Trading {
 
 		delete closeOrders[positionId];
 
+		if (pnlIsNegative) {
+			_creditVault(pnl);
+			if (pnl < margin) {
+				payable(positionOwner).transfer((margin - pnl) * 10**10);
+			}
+		} else {
+			if (releaseMargin) {
+				// User can choose to receive their margin without profit in edge cases
+				pnl = 0;
+			}
+			require(pnl <= vaultBalance, "!vault-insufficient");
+			vaultBalance -= uint64(pnl);
+			payable(positionOwner).transfer((margin + pnl) * 10**10);
+		}
+
 	}
 
-	// User/oracle can cancel pending position
+	// User/oracle can cancel pending order
 	function deletePendingOrder(uint256 positionId) external {
 		Order memory _closeOrder = closeOrders[positionId];
 		require(_closeOrder.margin > 0, "!order");
@@ -617,11 +639,13 @@ contract Trading {
 	) internal view returns(uint256) {
 
 		uint256 mainFeedPrice = _getMainFeedPrice(product);
+		if (mainFeedPrice == 0) {
+			// return dark oracle price if chainlink stops working
+			require(price > 0, "!price");
+			return price;
+		}
 
-		require(mainFeedPrice > 0, "!stale");
-		require(timestamp >= block.timestamp - product.mainFeedStaleAfter, "!too-old");
-
-		// If it's too old / too different, use chainlink
+		// If it's too different, use chainlink
 		if (
 			price == 0 ||
 			price > mainFeedPrice + mainFeedPrice * product.darkFeedMaxDeviation / 10**4 ||

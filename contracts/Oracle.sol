@@ -24,8 +24,6 @@ contract Oracle is IOracle {
 	mapping(address => uint256) prices;
 	mapping(address => uint256) timestamps;
 
-	bool isActive = true;
-
 	event SettlementError(
 		uint256 indexed positionId,
 		string reason,
@@ -35,8 +33,6 @@ contract Oracle is IOracle {
 	constructor() {
 		owner = msg.sender;
 	}
-
-	// Todo: emit error as event inside catch with error string, can be listened to and displayed in client
 
 	function openPosition(
 		uint256 positionId,
@@ -84,12 +80,10 @@ contract Oracle is IOracle {
 
 	function setParams(
 		uint256 _requestsPerFunding, 
-		uint256 _costPerRequest,
-		bool _isActive
+		uint256 _costPerRequest
 	) external onlyOwner {
 		requestsPerFunding = _requestsPerFunding;
 		costPerRequest = _costPerRequest;
-		isActive = _isActive;
 	}
 
 	function setOwner(address newOwner) external onlyOwner {
