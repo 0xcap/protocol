@@ -166,7 +166,7 @@ contract Trading {
 
 		// Update exposure
 		uint256 amount = position.margin * position.leverage / 10**8;
-		if (isLong) {
+		if (position.isLong) {
 			product.openInterestLong += uint48(amount);
 			require(product.openInterestLong <= product.maxExposure + product.openInterestShort, "!exposure-long");
 		} else {
@@ -202,8 +202,6 @@ contract Trading {
 			position.margin == 0 ||
 			msg.sender != position.owner && msg.sender != oracle
 		) return;
-
-		Product storage product = products[position.productId];
 
 		uint256 margin = position.margin;
 		address positionOwner = position.owner;
@@ -298,16 +296,15 @@ contract Trading {
 
 		uint256 pnl;
 		bool pnlIsNegative;
-		bool releaseMargin = _closeOrder.releaseMargin;
 
-		if (releaseMargin && allowGlobalMarginRelease) {
+		if (_closeOrder.releaseMargin && allowGlobalMarginRelease) {
 			(pnl, pnlIsNegative) = (0, false);
 		} else {
 
 			require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
 			
 			price = _validatePrice(product, price);
-			price = _getPriceWithFee(price, product.fee, !position.isLong);
+			price = _addFeeToPrice(price, product.fee, !position.isLong);
 
 			(pnl, pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
@@ -376,7 +373,7 @@ contract Trading {
 				payable(positionOwner).transfer((margin - pnl) * 10**10);
 			}
 		} else {
-			if (releaseMargin) {
+			if (_closeOrder.releaseMargin) {
 				pnl = 0;
 			}
 			require(pnl <= vaultBalance, "!vault-insufficient");
@@ -431,7 +428,11 @@ contract Trading {
 	}
 
 	// Liquidate positionIds
-	function liquidatePositions(uint256[] calldata positionIds) external {
+	// TODO: dark oracle should liquidate. That way it comes directly with a price, use chainlink if available otherwise this price. dark oracle gets liq rewards
+	function liquidatePositions(
+		uint256[] calldata positionIds,
+		uint256[] calldata prices
+	) external onlyOracle {
 
 		uint256 totalVaultReward;
 		uint256 totalLiquidatorReward;
@@ -448,19 +449,13 @@ contract Trading {
 			Product storage product = products[position.productId];
 
 			// Attempt to get chainlink price
-			uint256 price = _getChainlinkPrice(product);
+			uint256 price = _getChainlinkPrice(product.feed);
 
 			if (price == 0) {
-				// Chainlink not available, liquidate with dark oracle by submitting a close order
-				_closeOrder(
-					msg.sender,
-					positionId,
-					position.margin,
-					false,
-					false,
-					true
-				);
-				continue;
+				price = prices[i];
+				if (price == 0) {
+					continue;
+				}
 			}
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
@@ -655,9 +650,9 @@ contract Trading {
 	
 
 	// Called from client
-	function getMainFeedPrice(uint256 productId) external view returns(uint256) {
+	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
 		Product memory product = products[productId];
-		return _getMainFeedPrice(product);
+		return _getChainlinkPrice(product.feed);
 	}
 
 	// Getters

@@ -77,6 +77,13 @@ contract Oracle is IOracle {
 		_checkRequests();
 	}
 
+	function liquidatePositions(
+		uint256[] calldata positionIds,
+		uint256[] calldata _prices
+	) external onlyOracle {
+		ITrading(trading).liquidatePositions(positionIds, _prices);
+	}
+
 	function _checkRequests() internal {
 		requestsSinceFunding++;
 		if (requestsSinceFunding >= requestsPerFunding) {
