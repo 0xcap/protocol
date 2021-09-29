@@ -25,7 +25,7 @@ contract Oracle is IOracle {
 	mapping(address => uint256) timestamps;
 
 	event SettlementError(
-		uint256 indexed positionId,
+		uint256 indexed orderId,
 		string reason,
 		bool isClose
 	);
@@ -52,15 +52,15 @@ contract Oracle is IOracle {
 	}
 
 	function closePosition(
-		uint256 positionId,
+		uint256 orderId,
 		uint256 price
 	) external onlyOracle {
-		try ITrading(trading).closePosition(positionId, price) {
+		try ITrading(trading).closePosition(orderId, price) {
 
 		} catch Error(string memory reason) {
-			ITrading(trading).deletePendingOrder(positionId);
+			ITrading(trading).deletePendingOrder(orderId);
 			emit SettlementError(
-				positionId,
+				orderId,
 				reason,
 				true
 			);

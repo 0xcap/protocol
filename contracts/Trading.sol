@@ -45,6 +45,8 @@ contract Trading {
 	}
 
 	struct Order {
+		uint256 positionId;
+		uint256 productId;
 		uint256 margin;
 		bool releaseMargin;
 		bool ownerOverride;
@@ -65,6 +67,7 @@ contract Trading {
 	uint64 public minMargin = 100000; // 0.001 ETH
 	uint64 public maxSettlementTime = 2 minutes;
 	uint64 public nextPositionId; // Incremental
+	uint64 public nextCloseOrderId;
 
 	bool allowGlobalMarginRelease = false;
 
@@ -99,6 +102,7 @@ contract Trading {
 		uint256 newLeverage
 	);
 	event CloseOrder(
+		uint256 indexed orderId,
 		uint256 indexed positionId,
 		uint256 indexed productId,
 		uint256 margin,
@@ -290,7 +294,10 @@ contract Trading {
 			margin = position.margin;
 		}
 
-		closeOrders[positionId] = Order({
+		nextCloseOrderId++;
+		closeOrders[nextCloseOrderId] = Order({
+			positionId: positionId,
+			productId: position.productId,
 			margin: margin,
 			ownerOverride: ownerOverride,
 			releaseMargin: releaseMargin,
@@ -299,6 +306,7 @@ contract Trading {
 		});
 
 		emit CloseOrder(
+			nextCloseOrderId,
 			positionId,
 			position.productId,
 			margin,
@@ -309,15 +317,17 @@ contract Trading {
 	}
 
 	function closePosition(
-		uint256 positionId, 
+		uint256 orderId, 
 		uint256 price
 	) external {
 
-		Order memory _closeOrder = closeOrders[positionId];
+		Order memory _closeOrder = closeOrders[orderId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!order");
 
 		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
+
+		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
 		
@@ -386,7 +396,7 @@ contract Trading {
 			delete positions[positionId];
 		}
 
-		delete closeOrders[positionId];
+		delete closeOrders[orderId];
 
 		if (pnlIsNegative) {
 			_creditVault(pnl);
@@ -406,11 +416,11 @@ contract Trading {
 	}
 
 	// User/oracle can cancel pending order
-	function deletePendingOrder(uint256 positionId) external {
-		Order memory _closeOrder = closeOrders[positionId];
+	function deletePendingOrder(uint256 orderId) external {
+		Order memory _closeOrder = closeOrders[orderId];
 		require(_closeOrder.margin > 0, "!order");
 		require(msg.sender == oracle || _closeOrder.owner == msg.sender, "!owner");
-		delete closeOrders[positionId];
+		delete closeOrders[orderId];
 	}
 
 	// Add margin = msg.value to Position with id = positionId
@@ -665,6 +675,53 @@ contract Trading {
 	}
 
 	// Getters
+
+	// gets latest positions and close orders that need to be settled
+	function getPendingOrderIds() external view returns(
+		uint256[] memory openOrderIds,
+		uint256[] memory openOrderProductIds,
+		uint256[] memory closeOrderIds, 
+		uint256[] memory closeOrderProductIds
+	) {
+
+		uint256 lookback = 10;
+
+		openOrderIds = new uint256[](lookback);
+		openOrderProductIds = new uint256[](lookback);
+
+		uint256 until1 = nextPositionId >= lookback ? nextPositionId - lookback : 0;
+
+		uint256 j = 0;
+		for (uint256 i = nextPositionId; i >= until1; i--) {
+			Position memory position = positions[i];
+			if (position.price == 0) {
+				openOrderIds[j] = i;
+				openOrderProductIds[j] = position.productId;
+			}
+			j++;
+		}
+
+		closeOrderIds = new uint256[](lookback);
+		closeOrderProductIds = new uint256[](lookback);
+
+		uint256 until2 = nextCloseOrderId >= lookback ? nextCloseOrderId - lookback : 0;
+
+		uint256 k = 0;
+		for (uint256 i = nextCloseOrderId; i >= until2; i--) {
+			Order memory _closeOrder = closeOrders[i];
+			closeOrderIds[k] = i;
+			closeOrderProductIds[k] = _closeOrder.productId;
+			k++;
+		}
+
+		return (
+			openOrderIds,
+			openOrderProductIds,
+			closeOrderIds, 
+			closeOrderProductIds
+		);
+
+	}
 
 	function getProduct(uint256 productId) external view returns(Product memory) {
 		return products[productId];
