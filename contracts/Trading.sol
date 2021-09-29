@@ -12,8 +12,6 @@ contract Trading {
 
 	// Structs
 
-	// TODO: option to be unbounded by chainlink, per product, to scale possible products available
-
 	struct Product {
 		// 32 bytes
 		address feed; // Chainlink. Can be address(0) for no bounding. 20 bytes
@@ -58,14 +56,13 @@ contract Trading {
 	address public treasury;
 	address public oracle;
 
-	// TODO: review bytes
 	// 32 bytes
 	uint64 public vaultBalance;
-	uint64 public vaultThreshold = 10 * 10**8; // 10 ETH
-	uint64 public minMargin = 100000; // 0.001 ETH
-	uint64 public maxSettlementTime = 10 minutes;
-	uint64 public nextPositionId; // Incremental
-	uint64 public nextCloseOrderId;
+	uint40 public vaultThreshold = 10 * 10**8; // 10 ETH
+	uint32 public minMargin = 100000; // 0.001 ETH
+	uint32 public maxSettlementTime = 10 minutes;
+	uint40 public nextPositionId; // Incremental
+	uint40 public nextCloseOrderId;
 	bool allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
@@ -118,7 +115,7 @@ contract Trading {
 
 	// Methods
 
-	// Submit new position (no price)
+	// Submit new position (price pending)
 	function submitNewPosition(
 		uint256 productId,
 		bool isLong,
@@ -428,7 +425,6 @@ contract Trading {
 	}
 
 	// Liquidate positionIds
-	// TODO: dark oracle should liquidate. That way it comes directly with a price, use chainlink if available otherwise this price. dark oracle gets liq rewards
 	function liquidatePositions(
 		uint256[] calldata positionIds,
 		uint256[] calldata prices
@@ -643,19 +639,12 @@ contract Trading {
 
 	}
 
-	
+	// Getters
 
-	
-
-	
-
-	// Called from client
 	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
 		Product memory product = products[productId];
 		return _getChainlinkPrice(product.feed);
 	}
-
-	// Getters
 
 	// gets latest positions and close orders that need to be settled
 	function getPendingOrderIds() external view returns(
@@ -721,11 +710,15 @@ contract Trading {
 	// Governance methods
 
 	function updateMinMargin(uint256 _minMargin) external onlyOwner {
-		minMargin = uint64(_minMargin);
+		minMargin = uint32(_minMargin);
 	}
 
 	function updateVaultThreshold(uint256 _vaultThreshold) external onlyOwner {
-		vaultThreshold = uint64(_vaultThreshold);
+		vaultThreshold = uint40(_vaultThreshold);
+	}
+
+	function updateMaxSettlementTime(uint256 _maxSettlementTime) external onlyOwner {
+		maxSettlementTime = uint32(_maxSettlementTime);
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
