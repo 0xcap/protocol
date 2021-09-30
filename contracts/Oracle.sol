@@ -92,6 +92,10 @@ contract Oracle is IOracle {
 		}
 	}
 
+	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
+		return ITrading(trading).getChainlinkPrice(productId);
+	}
+
 	// Owner methods
 
 	function setParams(

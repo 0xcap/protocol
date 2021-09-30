@@ -31,4 +31,6 @@ interface ITrading {
 		uint256[] memory closeOrderProductIds
 	);
 
+	function getChainlinkPrice(uint256 productId) external view returns(uint256);
+
 }

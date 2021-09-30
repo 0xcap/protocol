@@ -23,10 +23,8 @@ contract Trading {
 		uint64 maxExposure; // Maximum allowed long/short imbalance. 8 bytes
 		uint64 openInterestLong; // 8 bytes
 		uint64 openInterestShort; // 8 bytes
-		uint16 oracleMaxDeviation; // 2 bytes
-		uint16 minTradeDuration; // In seconds. 2 bytes
-		uint16 liquidationThreshold; // In bps. 8000 = 80%. 2 bytes
-		uint16 liquidationBounty; // In bps. 500 = 5%. 2 bytes
+		uint32 oracleMaxDeviation; // 4 bytes
+		uint32 minTradeDuration; // In seconds. 4 bytes
 	}
 
 	struct Position {
@@ -57,12 +55,14 @@ contract Trading {
 	address public oracle;
 
 	// 32 bytes
-	uint64 public vaultBalance;
-	uint40 public vaultThreshold = 10 * 10**8; // 10 ETH
-	uint32 public minMargin = 100000; // 0.001 ETH
-	uint32 public maxSettlementTime = 10 minutes;
-	uint40 public nextPositionId; // Incremental
-	uint40 public nextCloseOrderId;
+	uint48 public vaultBalance; // 6 bytes
+	uint48 public vaultThreshold = 10 * 10**8; // 10 ETH. 6 bytes
+	uint24 public minMargin = 100000; // 0.001 ETH. 3 bytes
+	uint32 public maxSettlementTime = 10 minutes; // 3 bytes
+	uint16 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 2 bytes
+	uint16 public liquidationBounty = 500; // In bps. 500 = 5%. 2 bytes
+	uint40 public nextPositionId; // Incremental. 5 bytes
+	uint40 public nextCloseOrderId; // Incremental. 5 bytes
 	bool allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
@@ -314,7 +314,7 @@ contract Trading {
 
 		// Check if it's a liquidation
 		bool isLiquidation;
-		if (pnlIsNegative && pnl >= position.margin * product.liquidationThreshold / 10**4) {
+		if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
 			pnl = position.margin;
 			margin = position.margin;
 			isLiquidation = true;
@@ -374,7 +374,7 @@ contract Trading {
 				pnl = 0;
 			}
 			require(pnl <= vaultBalance, "!vault-insufficient");
-			vaultBalance -= uint64(pnl);
+			vaultBalance -= uint48(pnl);
 			payable(positionOwner).transfer((margin + pnl) * 10**10);
 		}
 
@@ -456,9 +456,9 @@ contract Trading {
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
-			if (pnlIsNegative && pnl >= position.margin * product.liquidationThreshold / 10**4) {
+			if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
 
-				uint256 vaultReward = position.margin * (10**4 - product.liquidationBounty) / 10**4;
+				uint256 vaultReward = position.margin * (10**4 - liquidationBounty) / 10**4;
 				totalVaultReward += uint96(vaultReward);
 
 				uint256 liquidatorReward = position.margin - vaultReward;
@@ -517,7 +517,7 @@ contract Trading {
 
 	function fundVault() external payable {
 		require(msg.value > 0, "!value");
-		vaultBalance += uint64(msg.value / 10**10);
+		vaultBalance += uint48(msg.value / 10**10);
 	}
 
 	// Internal methods
@@ -593,7 +593,7 @@ contract Trading {
 			vaultBalance = vaultThreshold;
 			ITreasury(treasury).receiveETH{value: excess * 10**10}();
 		} else {
-			vaultBalance += uint64(amount);
+			vaultBalance += uint48(amount);
 		}
 	}
 
@@ -647,22 +647,22 @@ contract Trading {
 	}
 
 	// gets latest positions and close orders that need to be settled
-	function getPendingOrderIds() external view returns(
+	function getPendingOrderIds(uint256 limit, uint256 offset) external view returns(
 		uint256[] memory openOrderIds,
 		uint256[] memory openOrderProductIds,
 		uint256[] memory closeOrderIds, 
 		uint256[] memory closeOrderProductIds
 	) {
 
-		uint256 lookback = 10;
+		require(limit < 100, "!limit");
 
-		openOrderIds = new uint256[](lookback);
-		openOrderProductIds = new uint256[](lookback);
+		openOrderIds = new uint256[](limit);
+		openOrderProductIds = new uint256[](limit);
 
-		uint256 until1 = nextPositionId >= lookback ? nextPositionId - lookback : 0;
+		uint256 until1 = nextPositionId >= limit ? nextPositionId - limit : 0;
 
 		uint256 j = 0;
-		for (uint256 i = nextPositionId; i >= until1; i--) {
+		for (uint256 i = nextPositionId - offset; i >= until1 - offset; i--) {
 			Position memory position = positions[i];
 			if (position.price == 0) {
 				openOrderIds[j] = i;
@@ -671,13 +671,13 @@ contract Trading {
 			j++;
 		}
 
-		closeOrderIds = new uint256[](lookback);
-		closeOrderProductIds = new uint256[](lookback);
+		closeOrderIds = new uint256[](limit);
+		closeOrderProductIds = new uint256[](limit);
 
-		uint256 until2 = nextCloseOrderId >= lookback ? nextCloseOrderId - lookback : 0;
+		uint256 until2 = nextCloseOrderId >= limit ? nextCloseOrderId - limit : 0;
 
 		uint256 k = 0;
-		for (uint256 i = nextCloseOrderId; i >= until2; i--) {
+		for (uint256 i = nextCloseOrderId - offset; i >= until2 - offset; i--) {
 			Order memory _closeOrder = closeOrders[i];
 			closeOrderIds[k] = i;
 			Position memory position = positions[_closeOrder.positionId];
@@ -709,16 +709,18 @@ contract Trading {
 
 	// Governance methods
 
-	function updateMinMargin(uint256 _minMargin) external onlyOwner {
-		minMargin = uint32(_minMargin);
-	}
-
-	function updateVaultThreshold(uint256 _vaultThreshold) external onlyOwner {
-		vaultThreshold = uint40(_vaultThreshold);
-	}
-
-	function updateMaxSettlementTime(uint256 _maxSettlementTime) external onlyOwner {
+	function updateParams(
+		uint256 _minMargin,
+		uint256 _vaultThreshold,
+		uint256 _maxSettlementTime,
+		uint256 _liquidationThreshold,
+		uint256 _liquidationBounty
+	) external onlyOwner {
+		minMargin = uint24(_minMargin);
+		vaultThreshold = uint48(_vaultThreshold);
 		maxSettlementTime = uint32(_maxSettlementTime);
+		liquidationThreshold = uint16(_liquidationThreshold);
+		liquidationBounty = uint16(_liquidationBounty);
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
@@ -727,9 +729,7 @@ contract Trading {
 		require(product.maxLeverage == 0, "!product-exists");
 
 		require(_product.maxLeverage > 0, "!max-leverage");
-		require(_product.feed != address(0), "!feed");
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
-		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		products[productId] = Product({
 			feed: _product.feed,
@@ -741,9 +741,7 @@ contract Trading {
 			openInterestLong: 0,
 			openInterestShort: 0,
 			oracleMaxDeviation: _product.oracleMaxDeviation,
-			minTradeDuration: _product.minTradeDuration,
-			liquidationThreshold: _product.liquidationThreshold,
-			liquidationBounty: _product.liquidationBounty
+			minTradeDuration: _product.minTradeDuration
 		});
 
 	}
@@ -754,9 +752,7 @@ contract Trading {
 		require(product.maxLeverage > 0, "!product-exists");
 
 		require(_product.maxLeverage >= 1 * 10**8, "!max-leverage");
-		require(_product.feed != address(0), "!feed");
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
-		require(_product.liquidationThreshold > 0, "!liquidationThreshold");
 
 		product.feed = _product.feed;
 		product.maxLeverage = _product.maxLeverage;
@@ -766,8 +762,6 @@ contract Trading {
 		product.maxExposure = _product.maxExposure;
 		product.oracleMaxDeviation = _product.oracleMaxDeviation;
 		product.minTradeDuration = _product.minTradeDuration;
-		product.liquidationThreshold = _product.liquidationThreshold;
-		product.liquidationBounty = _product.liquidationBounty;
 	
 	}
 
