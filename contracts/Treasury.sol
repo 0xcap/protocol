@@ -20,7 +20,7 @@ contract Treasury is ITreasury {
 	// Contract dependencies
 	address public owner;
 	address public trading;
-	address public darkFeed;
+	address public oracle;
 
 	// Uniswap arbitrum addresses
 	IUniswapRouter public constant uniswapRouter = IUniswapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
@@ -54,11 +54,11 @@ contract Treasury is ITreasury {
 	}
 
 	function fundOracle(
-		address oracle, 
+		address destination, 
 		uint256 amount
-	) external override onlyDarkFeed {
+	) external override onlyOracle {
 		if (amount > address(this).balance) return;
-		payable(oracle).transfer(amount);
+		payable(destination).transfer(amount);
 	}
 
 	function sendETH(
@@ -138,8 +138,8 @@ contract Treasury is ITreasury {
 		trading = _trading;
 	}
 
-	function setDarkFeed(address _darkFeed) external onlyOwner {
-		darkFeed = _darkFeed;
+	function setOracle(address _oracle) external onlyOwner {
+		oracle = _oracle;
 	}
 
 	// Modifiers
@@ -149,8 +149,8 @@ contract Treasury is ITreasury {
 		_;
 	}
 
-	modifier onlyDarkFeed() {
-		require(msg.sender == darkFeed, "!darkFeed");
+	modifier onlyOracle() {
+		require(msg.sender == oracle, "!oracle");
 		_;
 	}
 
