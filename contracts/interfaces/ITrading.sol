@@ -24,13 +24,4 @@ interface ITrading {
 		uint256[] calldata prices
 	) external;
 
-	function getPendingOrderIds() external view returns(
-		uint256[] memory openOrderIds,
-		uint256[] memory openOrderProductIds,
-		uint256[] memory closeOrderIds, 
-		uint256[] memory closeOrderProductIds
-	);
-
-	function getChainlinkPrice(uint256 productId) external view returns(uint256);
-
 }

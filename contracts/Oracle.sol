@@ -34,47 +34,53 @@ contract Oracle is IOracle {
 		owner = msg.sender;
 	}
 
-	function getPendingOrderIds() external view onlyOracle returns(
-		uint256[] memory,
-		uint256[] memory,
-		uint256[] memory, 
-		uint256[] memory
-	) {
-		return ITrading(trading).getPendingOrderIds();
-	}
-
-	function openPosition(
-		uint256 positionId,
-		uint256 price
+	function settleOrders(
+		uint256[] calldata positionIds,
+		uint256[] calldata positionPrices,
+		uint256[] calldata orderIds,
+		uint256[] calldata orderPrices
 	) external onlyOracle {
-		try ITrading(trading).settleNewPosition(positionId, price) {
+		
+		for (uint256 i = 0; i < positionIds.length; i++) {
 
-		} catch Error(string memory reason) {
-			ITrading(trading).cancelPosition(positionId);
-			emit SettlementError(
-				positionId,
-				reason,
-				false
-			);
+			uint256 positionId = positionIds[i];
+			uint256 price = positionPrices[i];
+
+			try ITrading(trading).settleNewPosition(positionId, price) {
+
+			} catch Error(string memory reason) {
+				ITrading(trading).cancelPosition(positionId);
+				console.log("Error position", positionId, reason);
+				emit SettlementError(
+					positionId,
+					reason,
+					false
+				);
+			}
+
 		}
-		_checkRequests();
-	}
 
-	function closePosition(
-		uint256 orderId,
-		uint256 price
-	) external onlyOracle {
-		try ITrading(trading).settleCloseOrder(orderId, price) {
+		for (uint256 i = 0; i < orderIds.length; i++) {
 
-		} catch Error(string memory reason) {
-			ITrading(trading).cancelOrder(orderId);
-			emit SettlementError(
-				orderId,
-				reason,
-				true
-			);
+			uint256 orderId = orderIds[i];
+			uint256 price = orderPrices[i];
+
+			try ITrading(trading).settleCloseOrder(orderId, price) {
+
+			} catch Error(string memory reason) {
+				ITrading(trading).cancelOrder(orderId);
+				console.log("Error order", orderId, reason);
+				emit SettlementError(
+					orderId,
+					reason,
+					true
+				);
+			}
+
 		}
-		_checkRequests();
+
+		_creditOracle(positionIds.length + orderIds.length);
+
 	}
 
 	function liquidatePositions(
@@ -84,16 +90,13 @@ contract Oracle is IOracle {
 		ITrading(trading).liquidatePositions(positionIds, _prices);
 	}
 
-	function _checkRequests() internal {
-		requestsSinceFunding++;
+	function _creditOracle(uint256 requests) internal {
+		if (requests == 0) return;
+		requestsSinceFunding += requests;
 		if (requestsSinceFunding >= requestsPerFunding) {
 			requestsSinceFunding = 0;
 			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
 		}
-	}
-
-	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
-		return ITrading(trading).getChainlinkPrice(productId);
 	}
 
 	// Owner methods

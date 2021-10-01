@@ -28,9 +28,9 @@ async function main() {
   console.log('owner', owner.address);
   console.log('user', user.address);
 
-  const tradingAddress = '0x5081a39b8A5f0E35a8D959395a630b68B74Dd30f';
-  const oracleAddress = '0x1fA02b2d6A771842690194Cf62D91bdd92BfE28d';
-  const treasuryAddress = '0xdbC43Ba45381e02825b14322cDdd15eC4B3164E6';
+  const tradingAddress = '0x5302E909d1e93e30F05B5D6Eea766363D14F9892';
+  const oracleAddress = '0x0ed64d01D0B4B655E410EF1441dD677B695639E7';
+  const treasuryAddress = '0x4bf010f1b9beDA5450a8dD702ED602A104ff65EE';
 
   console.log('Trading balance', formatUnits(await provider.getBalance(tradingAddress)));
   console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
@@ -40,14 +40,34 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
 
+  let tx, receipt;
+  /*
   // submit order
-  let tx = await trading.connect(user).submitNewPosition(1, true, parseUnits("50", 8), {value: parseUnits("1")});
+  tx = await trading.connect(user).submitNewPosition(1, true, parseUnits("50", 8), {value: parseUnits("1")});
   console.log('Submitted order long 1 ETH at 50x');
-  let receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber());
+  receipt = await provider.getTransactionReceipt(tx.hash);
+  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 77000
+
+  */
 
   const posId = await trading.nextPositionId();
   console.log('Position', posId, await trading.getPositions([posId]));
+
+  /*
+  // cancel close order
+  tx = await trading.connect(user).cancelOrder(1);
+  console.log('Cancelled close order', 1);
+  receipt = await provider.getTransactionReceipt(tx.hash);
+  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
+  */
+
+  /*
+  // submit close order
+  tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
+  console.log('Submitted close order for 0.3 ETH on position ', posId);
+  receipt = await provider.getTransactionReceipt(tx.hash);
+  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
+  */
 
 }
 

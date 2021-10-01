@@ -40,12 +40,12 @@ contract Trading {
 	}
 
 	struct Order {
-		uint80 positionId;
-		uint80 margin;
-		uint72 timestamp;
-		bool releaseMargin;
-		bool fromLiquidator;
-		bool ownerOverride;
+		uint64 positionId; // 8 bytes
+		uint32 productId; // 4 bytes
+		uint64 margin; // 8 bytes
+		uint80 timestamp; // 10 bytes
+		bool releaseMargin; // 1 byte
+		bool ownerOverride; // 1 byte
 	}
 
 	// Variables
@@ -58,7 +58,7 @@ contract Trading {
 	uint48 public vaultBalance; // 6 bytes
 	uint48 public vaultThreshold = 10 * 10**8; // 10 ETH. 6 bytes
 	uint24 public minMargin = 100000; // 0.001 ETH. 3 bytes
-	uint32 public maxSettlementTime = 10 minutes; // 3 bytes
+	uint32 public maxSettlementTime = 30 minutes; // 3 bytes
 	uint16 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 2 bytes
 	uint16 public liquidationBounty = 500; // In bps. 500 = 5%. 2 bytes
 	uint40 public nextPositionId; // Incremental. 5 bytes
@@ -153,10 +153,15 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
+		console.log('settleNewPosition', positionId, price);
+
 		// Check position
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 		require(position.price == 0, "!settled");
+
+		console.log('timestamps', block.timestamp, position.timestamp);
+
 		require(block.timestamp <= position.timestamp + maxSettlementTime, "!time");
 
 		Product storage product = products[position.productId];
@@ -164,10 +169,10 @@ contract Trading {
 		// Update exposure
 		uint256 amount = position.margin * position.leverage / 10**8;
 		if (position.isLong) {
-			product.openInterestLong += uint48(amount);
+			product.openInterestLong += uint64(amount);
 			require(product.openInterestLong <= product.maxExposure + product.openInterestShort, "!exposure-long");
 		} else {
-			product.openInterestShort += uint48(amount);
+			product.openInterestShort += uint64(amount);
 			require(product.openInterestShort <= product.maxExposure + product.openInterestLong, "!exposure-short");
 		}
 
@@ -218,30 +223,12 @@ contract Trading {
 	) external {
 
 		// ! Multiple close orders can be submitted on the same position before they are settled
-		_submitCloseOrder(
-			msg.sender,
-			positionId,
-			margin,
-			releaseMargin,
-			false
-		);
-
-	}
-
-	// Internal method used also by liquidator
-	function _submitCloseOrder(
-		address sender,
-		uint256 positionId,
-		uint256 margin,
-		bool releaseMargin,
-		bool fromLiquidator
-	) internal {
 
 		require(margin >= minMargin, "!margin");
 
 		// Check position
 		Position memory position = positions[positionId];
-		require(fromLiquidator || sender == owner || sender == position.owner, "!owner");
+		require(msg.sender == owner || msg.sender == position.owner, "!owner");
 		require(position.margin > 0, "!position");
 
 		// Check product
@@ -250,18 +237,18 @@ contract Trading {
 
 		// Governance can release margin from any position to protect from malicious profits
 		bool ownerOverride;
-		if (sender == owner) {
+		if (msg.sender == owner) {
 			ownerOverride = true;
 			releaseMargin = true;
 		}
 
 		nextCloseOrderId++;
 		closeOrders[nextCloseOrderId] = Order({
-			positionId: uint80(positionId),
-			margin: uint80(margin),
-			timestamp: uint72(block.timestamp),
+			positionId: uint64(positionId),
+			productId: uint32(position.productId),
+			margin: uint64(margin),
+			timestamp: uint80(block.timestamp),
 			releaseMargin: releaseMargin,
-			fromLiquidator: fromLiquidator,
 			ownerOverride: ownerOverride
 		});
 
@@ -321,22 +308,18 @@ contract Trading {
 			isFullClose = true;
 		}
 
-		if (_closeOrder.fromLiquidator && !isLiquidation) {
-			revert("!liquidation");
-		}
-
 		position.margin -= uint64(margin);
 
 		// Set exposure
 		if (position.isLong) {
 			if (product.openInterestLong >= margin * position.leverage / 10**8) {
-				product.openInterestLong -= uint48(margin * position.leverage / 10**8);
+				product.openInterestLong -= uint64(margin * position.leverage / 10**8);
 			} else {
 				product.openInterestLong = 0;
 			}
 		} else {
 			if (product.openInterestShort >= margin * position.leverage / 10**8) {
-				product.openInterestShort -= uint48(margin * position.leverage / 10**8);
+				product.openInterestShort -= uint64(margin * position.leverage / 10**8);
 			} else {
 				product.openInterestShort = 0;
 			}
@@ -424,6 +407,8 @@ contract Trading {
 
 	}
 
+	// TODO: maybe have this be without loop, and loop in the oracle contract?
+
 	// Liquidate positionIds
 	function liquidatePositions(
 		uint256[] calldata positionIds,
@@ -466,13 +451,13 @@ contract Trading {
 
 				if (position.isLong) {
 					if (product.openInterestLong >= position.margin * position.leverage / 10**8) {
-						product.openInterestLong -= uint48(position.margin * position.leverage / 10**8);
+						product.openInterestLong -= uint64(position.margin * position.leverage / 10**8);
 					} else {
 						product.openInterestLong = 0;
 					}
 				} else {
 					if (product.openInterestShort >= position.margin * position.leverage / 10**8) {
-						product.openInterestShort -= uint48(position.margin * position.leverage / 10**8);
+						product.openInterestShort -= uint64(position.margin * position.leverage / 10**8);
 					} else {
 						product.openInterestShort = 0;
 					}
@@ -647,49 +632,44 @@ contract Trading {
 	}
 
 	// gets latest positions and close orders that need to be settled
-	function getPendingOrderIds(uint256 limit, uint256 offset) external view returns(
-		uint256[] memory openOrderIds,
-		uint256[] memory openOrderProductIds,
-		uint256[] memory closeOrderIds, 
-		uint256[] memory closeOrderProductIds
+	function getOrdersToSettle(uint256 limit) external view returns(
+		uint256[] memory _positionIds,
+		Position[] memory _positions,
+		uint256[] memory _orderIds,
+		Order[] memory _orders
 	) {
 
-		require(limit < 100, "!limit");
+		require(limit > 0 && limit <= 300, "!limit");
 
-		openOrderIds = new uint256[](limit);
-		openOrderProductIds = new uint256[](limit);
+		_positionIds = new uint256[](limit);
+		_positions = new Position[](limit);
+		_orderIds = new uint256[](limit);
+		_orders = new Order[](limit);
 
 		uint256 until1 = nextPositionId >= limit ? nextPositionId - limit : 0;
-
 		uint256 j = 0;
-		for (uint256 i = nextPositionId - offset; i >= until1 - offset; i--) {
+		for (uint256 i = nextPositionId; i > until1; i--) {
 			Position memory position = positions[i];
-			if (position.price == 0) {
-				openOrderIds[j] = i;
-				openOrderProductIds[j] = position.productId;
+			if (position.price == 0 && position.margin > 0) {
+				_positionIds[j] = i;
+				_positions[j] = position;
 			}
 			j++;
 		}
 
-		closeOrderIds = new uint256[](limit);
-		closeOrderProductIds = new uint256[](limit);
-
 		uint256 until2 = nextCloseOrderId >= limit ? nextCloseOrderId - limit : 0;
-
 		uint256 k = 0;
-		for (uint256 i = nextCloseOrderId - offset; i >= until2 - offset; i--) {
-			Order memory _closeOrder = closeOrders[i];
-			closeOrderIds[k] = i;
-			Position memory position = positions[_closeOrder.positionId];
-			closeOrderProductIds[k] = position.productId;
+		for (uint256 i = nextCloseOrderId; i > until2; i--) {
+			_orderIds[k] = i;
+			_orders[k] = closeOrders[i];
 			k++;
 		}
 
 		return (
-			openOrderIds,
-			openOrderProductIds,
-			closeOrderIds, 
-			closeOrderProductIds
+			_positionIds,
+			_positions,
+			_orderIds,
+			_orders
 		);
 
 	}
@@ -697,6 +677,8 @@ contract Trading {
 	function getProduct(uint256 productId) external view returns(Product memory) {
 		return products[productId];
 	}
+
+	// TODO: getOrders
 
 	function getPositions(uint256[] calldata positionIds) external view returns(Position[] memory _positions) {
 		uint256 length = positionIds.length;
