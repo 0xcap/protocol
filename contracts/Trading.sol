@@ -57,10 +57,9 @@ contract Trading {
 	// 32 bytes
 	uint48 public vaultBalance; // 6 bytes
 	uint48 public vaultThreshold = 10 * 10**8; // 10 ETH. 6 bytes
-	uint24 public minMargin = 100000; // 0.001 ETH. 3 bytes
-	uint32 public maxSettlementTime = 30 minutes; // 3 bytes
+	uint32 public minMargin = 100000; // 0.001 ETH. 4 bytes
+	uint32 public maxSettlementTime = 30 minutes; // 4 bytes
 	uint16 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 2 bytes
-	uint16 public liquidationBounty = 500; // In bps. 500 = 5%. 2 bytes
 	uint40 public nextPositionId; // Incremental. 5 bytes
 	uint40 public nextCloseOrderId; // Incremental. 5 bytes
 	bool allowGlobalMarginRelease = false;
@@ -99,12 +98,6 @@ contract Trading {
 		uint256 pnl, 
 		bool pnlIsNegative, 
 		bool wasLiquidated
-	);
-	event PositionLiquidated(
-		uint256 indexed positionId, 
-		address indexed liquidator, 
-		uint256 vaultReward, 
-		uint256 liquidatorReward
 	);
 
 	// Constructor
@@ -229,7 +222,7 @@ contract Trading {
 		// Check position
 		Position memory position = positions[positionId];
 		require(msg.sender == owner || msg.sender == position.owner, "!owner");
-		require(position.price > 0, "!price");
+		require(position.price > 0 && position.margin > 0, "!position");
 
 		// Check product
 		Product memory product = products[position.productId];
@@ -272,7 +265,7 @@ contract Trading {
 		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
-		require(position.price > 0, "!position");
+		require(position.price > 0 && position.margin > 0, "!position");
 
 		bool isFullClose;
 		if (margin >= position.margin) {
@@ -323,14 +316,14 @@ contract Trading {
 
 		// Set exposure
 		if (position.isLong) {
-			if (product.openInterestLong >= margin * position.leverage / 10**8) {
-				product.openInterestLong -= uint64(margin * position.leverage / 10**8);
+			if (product.openInterestLong >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestLong -= uint64(margin * uint256(position.leverage) / 10**8);
 			} else {
 				product.openInterestLong = 0;
 			}
 		} else {
-			if (product.openInterestShort >= margin * position.leverage / 10**8) {
-				product.openInterestShort -= uint64(margin * position.leverage / 10**8);
+			if (product.openInterestShort >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestShort -= uint64(margin * uint256(position.leverage) / 10**8);
 			} else {
 				product.openInterestShort = 0;
 			}
@@ -424,8 +417,6 @@ contract Trading {
 
 	}
 
-	// TODO: maybe have this be without loop, and loop in the oracle contract?
-
 	// Liquidate positionIds
 	function liquidatePositions(
 		uint256[] calldata positionIds,
@@ -433,14 +424,13 @@ contract Trading {
 	) external onlyOracle {
 
 		uint256 totalVaultReward;
-		uint256 totalLiquidatorReward;
 
 		for (uint256 i = 0; i < positionIds.length; i++) {
 
 			uint256 positionId = positionIds[i];
 			Position memory position = positions[positionId];
 			
-			if (position.productId == 0) {
+			if (position.productId == 0 || position.price == 0) {
 				continue;
 			}
 
@@ -458,23 +448,23 @@ contract Trading {
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
-			if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
+			console.log('liq', positionId, pnl, pnlIsNegative);
+			console.log('pos', position.margin, liquidationThreshold);
 
-				uint256 vaultReward = position.margin * (10**4 - liquidationBounty) / 10**4;
-				totalVaultReward += uint96(vaultReward);
+			if (pnlIsNegative && pnl >= uint256(position.margin) * liquidationThreshold / 10**4) {
 
-				uint256 liquidatorReward = position.margin - vaultReward;
-				totalLiquidatorReward += liquidatorReward;
+				totalVaultReward += uint256(position.margin);
 
+				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
 				if (position.isLong) {
-					if (product.openInterestLong >= position.margin * position.leverage / 10**8) {
-						product.openInterestLong -= uint64(position.margin * position.leverage / 10**8);
+					if (product.openInterestLong >= amount) {
+						product.openInterestLong -= uint64(amount);
 					} else {
 						product.openInterestLong = 0;
 					}
 				} else {
-					if (product.openInterestShort >= position.margin * position.leverage / 10**8) {
-						product.openInterestShort -= uint64(position.margin * position.leverage / 10**8);
+					if (product.openInterestShort >= amount) {
+						product.openInterestShort -= uint64(amount);
 					} else {
 						product.openInterestShort = 0;
 					}
@@ -496,23 +486,12 @@ contract Trading {
 
 				delete positions[positionId];
 
-				emit PositionLiquidated(
-					positionId, 
-					msg.sender, 
-					vaultReward, 
-					liquidatorReward
-				);
-
 			}
 
 		}
 
 		if (totalVaultReward > 0) {
 			_creditVault(totalVaultReward);
-		}
-
-		if (totalLiquidatorReward > 0) {
-			payable(msg.sender).transfer(totalLiquidatorReward * 10**10);
 		}
 
 	}
@@ -727,14 +706,12 @@ contract Trading {
 		uint256 _vaultThreshold,
 		uint256 _maxSettlementTime,
 		uint256 _liquidationThreshold,
-		uint256 _liquidationBounty,
 		bool _allowGlobalMarginRelease
 	) external onlyOwner {
-		minMargin = uint24(_minMargin);
+		minMargin = uint32(_minMargin);
 		vaultThreshold = uint48(_vaultThreshold);
 		maxSettlementTime = uint32(_maxSettlementTime);
 		liquidationThreshold = uint16(_liquidationThreshold);
-		liquidationBounty = uint16(_liquidationBounty);
 		allowGlobalMarginRelease = _allowGlobalMarginRelease;
 	}
 

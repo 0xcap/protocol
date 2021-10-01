@@ -28,7 +28,7 @@ async function main() {
   console.log('owner', owner.address);
   console.log('user', user.address);
 
-  const tradingAddress = '0x8D81A3DCd17030cD5F23Ac7370e4Efb10D2b3cA4';
+  const tradingAddress = '0x0Dd99d9f56A14E9D53b2DdC62D9f0bAbe806647A';
   //const oracleAddress = '0xc9952Fc93Fa9bE383ccB39008c786b9f94eAc95d';
   //const treasuryAddress = '0x2625760C4A8e8101801D3a48eE64B2bEA42f1E96';
 
@@ -43,7 +43,7 @@ async function main() {
   let tx, receipt;
 
   
-  // // submit order
+  // submit order
   // tx = await trading.connect(user).submitNewPosition(1, true, parseUnits("50", 8), {value: parseUnits("1")});
   // console.log('Submitted order long 1 ETH at 50x');
   // receipt = await provider.getTransactionReceipt(tx.hash);
@@ -52,16 +52,7 @@ async function main() {
 
   const posId = await trading.nextPositionId();
   console.log('Position', posId, await trading.getPositions([posId]));
-
   
-  // // cancel close order
-  // tx = await trading.connect(user).cancelOrder(1);
-  // console.log('Cancelled close order', 1);
-  // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
-  
-
-
   // // submit partial close order
   // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
   // console.log('Submitted close order for 0.3 ETH on position ', posId);
@@ -73,6 +64,15 @@ async function main() {
   // console.log('Submitted close order for 0.7 ETH on position ', posId);
   // receipt = await provider.getTransactionReceipt(tx.hash);
   // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
+
+  // // cancel close order
+  // tx = await trading.connect(user).cancelOrder(3);
+  // console.log('Cancelled close order', 3);
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
+
+  // Liquidate positions
+  
 
 }
 

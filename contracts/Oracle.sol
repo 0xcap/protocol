@@ -91,7 +91,7 @@ contract Oracle is IOracle {
 
 		}
 
-		_creditOracle(positionIds.length + orderIds.length);
+		_tallyOracleRequests(positionIds.length + orderIds.length);
 
 	}
 
@@ -100,9 +100,10 @@ contract Oracle is IOracle {
 		uint256[] calldata _prices
 	) external onlyOracle {
 		ITrading(trading).liquidatePositions(positionIds, _prices);
+		_tallyOracleRequests(positionIds.length);
 	}
 
-	function _creditOracle(uint256 requests) internal {
+	function _tallyOracleRequests(uint256 requests) internal {
 		if (requests == 0) return;
 		requestsSinceFunding += requests;
 		if (requestsSinceFunding >= requestsPerFunding) {
