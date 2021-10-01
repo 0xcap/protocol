@@ -28,46 +28,46 @@ async function main() {
   console.log('owner', owner.address);
   console.log('user', user.address);
 
-  const tradingAddress = '0x5302E909d1e93e30F05B5D6Eea766363D14F9892';
-  const oracleAddress = '0x0ed64d01D0B4B655E410EF1441dD677B695639E7';
-  const treasuryAddress = '0x4bf010f1b9beDA5450a8dD702ED602A104ff65EE';
+  const tradingAddress = '0x8D81A3DCd17030cD5F23Ac7370e4Efb10D2b3cA4';
+  //const oracleAddress = '0xc9952Fc93Fa9bE383ccB39008c786b9f94eAc95d';
+  //const treasuryAddress = '0x2625760C4A8e8101801D3a48eE64B2bEA42f1E96';
 
   console.log('Trading balance', formatUnits(await provider.getBalance(tradingAddress)));
-  console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
-  console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
+  //console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
+  //console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(tradingAddress);
-  const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
-  const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
+  //const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
+  //const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
 
   let tx, receipt;
-  /*
-  // submit order
-  tx = await trading.connect(user).submitNewPosition(1, true, parseUnits("50", 8), {value: parseUnits("1")});
-  console.log('Submitted order long 1 ETH at 50x');
-  receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 77000
 
-  */
+  
+  // // submit order
+  // tx = await trading.connect(user).submitNewPosition(1, true, parseUnits("50", 8), {value: parseUnits("1")});
+  // console.log('Submitted order long 1 ETH at 50x');
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 77291
+  
 
   const posId = await trading.nextPositionId();
   console.log('Position', posId, await trading.getPositions([posId]));
 
-  /*
-  // cancel close order
-  tx = await trading.connect(user).cancelOrder(1);
-  console.log('Cancelled close order', 1);
-  receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
-  */
+  
+  // // cancel close order
+  // tx = await trading.connect(user).cancelOrder(1);
+  // console.log('Cancelled close order', 1);
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
+  
 
-  /*
-  // submit close order
-  tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
-  console.log('Submitted close order for 0.3 ETH on position ', posId);
-  receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
-  */
+
+  // // submit close order
+  // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
+  // console.log('Submitted close order for 0.3 ETH on position ', posId);
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
+
 
 }
 

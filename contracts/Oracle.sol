@@ -40,41 +40,53 @@ contract Oracle is IOracle {
 		uint256[] calldata orderIds,
 		uint256[] calldata orderPrices
 	) external onlyOracle {
-		
-		for (uint256 i = 0; i < positionIds.length; i++) {
 
-			uint256 positionId = positionIds[i];
-			uint256 price = positionPrices[i];
+		if (positionIds.length > 0) {
 
-			try ITrading(trading).settleNewPosition(positionId, price) {
+			console.log('positionIds', positionIds[0], positionPrices[0]);
 
-			} catch Error(string memory reason) {
-				ITrading(trading).cancelPosition(positionId);
-				console.log("Error position", positionId, reason);
-				emit SettlementError(
-					positionId,
-					reason,
-					false
-				);
+			for (uint256 i = 0; i < positionIds.length; i++) {
+
+				uint256 positionId = positionIds[i];
+				uint256 price = positionPrices[i];
+
+				try ITrading(trading).settleNewPosition(positionId, price) {
+
+				} catch Error(string memory reason) {
+					ITrading(trading).cancelPosition(positionId);
+					console.log("Error position", positionId, reason);
+					emit SettlementError(
+						positionId,
+						reason,
+						false
+					);
+				}
+
 			}
 
 		}
 
-		for (uint256 i = 0; i < orderIds.length; i++) {
+		if (orderIds.length > 0) {
 
-			uint256 orderId = orderIds[i];
-			uint256 price = orderPrices[i];
+			console.log('orderIds', orderIds[0], orderPrices[0]);
 
-			try ITrading(trading).settleCloseOrder(orderId, price) {
+			for (uint256 i = 0; i < orderIds.length; i++) {
 
-			} catch Error(string memory reason) {
-				ITrading(trading).cancelOrder(orderId);
-				console.log("Error order", orderId, reason);
-				emit SettlementError(
-					orderId,
-					reason,
-					true
-				);
+				uint256 orderId = orderIds[i];
+				uint256 price = orderPrices[i];
+
+				try ITrading(trading).settleCloseOrder(orderId, price) {
+
+				} catch Error(string memory reason) {
+					ITrading(trading).cancelOrder(orderId);
+					console.log("Error order", orderId, reason);
+					emit SettlementError(
+						orderId,
+						reason,
+						true
+					);
+				}
+
 			}
 
 		}

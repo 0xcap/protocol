@@ -229,7 +229,7 @@ contract Trading {
 		// Check position
 		Position memory position = positions[positionId];
 		require(msg.sender == owner || msg.sender == position.owner, "!owner");
-		require(position.margin > 0, "!position");
+		require(position.price > 0, "!price");
 
 		// Check product
 		Product memory product = products[position.productId];
@@ -254,11 +254,15 @@ contract Trading {
 
 	}
 
+	// TODO: explicit cast everything
+
 	// Closes position at the fetched price
 	function settleCloseOrder(
 		uint256 orderId, 
 		uint256 price
 	) external onlyOracle {
+
+		console.log('settleCloseOrder', orderId, price);
 
 		// Check order and params
 		Order memory _closeOrder = closeOrders[orderId];
@@ -268,7 +272,7 @@ contract Trading {
 		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
+		require(position.price > 0, "!position");
 
 		bool isFullClose;
 		if (margin > position.margin) {
@@ -290,9 +294,13 @@ contract Trading {
 			price = _validatePrice(product, price);
 			price = _addFeeToPrice(price, product.fee, !position.isLong);
 
+			console.log('price', product.fee, price);
+
 			(pnl, pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
 		}
+
+		console.log('pnl', pnl, pnlIsNegative);
 
 		// Can't release margin on pnl negative position
 		if (_closeOrder.ownerOverride && pnlIsNegative) {
@@ -307,6 +315,10 @@ contract Trading {
 			isLiquidation = true;
 			isFullClose = true;
 		}
+
+		console.log('params', margin, position.margin, isLiquidation);
+		console.log('params2', isFullClose);
+
 
 		position.margin -= uint64(margin);
 
@@ -347,18 +359,24 @@ contract Trading {
 
 		delete closeOrders[orderId];
 
+		console.log('h1');
+
 		if (pnlIsNegative) {
 			_creditVault(pnl);
+			console.log('h2');
 			if (pnl < margin) {
 				payable(positionOwner).transfer((margin - pnl) * 10**10);
 			}
+			console.log('h3');
 		} else {
 			if (_closeOrder.releaseMargin) {
 				pnl = 0;
 			}
+			console.log('h4');
 			require(pnl <= vaultBalance, "!vault-insufficient");
 			vaultBalance -= uint48(pnl);
 			payable(positionOwner).transfer((margin + pnl) * 10**10);
+			console.log('h5');
 		}
 
 	}
@@ -572,14 +590,18 @@ contract Trading {
 
 	// Credit vault with trader losses and send excess to treasury
 	function _creditVault(uint256 amount) internal {
+		console.log('_creditVault', amount, vaultBalance, vaultThreshold);
 		if (amount == 0) return;
 		if (vaultBalance + amount > vaultThreshold) {
+			console.log('j1');
 			uint256 excess = vaultBalance + amount - vaultThreshold;
+			console.log('j2', excess);
 			vaultBalance = vaultThreshold;
 			ITreasury(treasury).receiveETH{value: excess * 10**10}();
 		} else {
 			vaultBalance += uint48(amount);
 		}
+		console.log('j3');
 	}
 
 	function _getPnL(
@@ -589,36 +611,46 @@ contract Trading {
 		uint256 interest
 	) internal view returns(uint256 pnl, bool pnlIsNegative) {
 
+		// position.price = 3266, price = 3254
+
+		console.log('_getPnL', price, position.price, margin);
+		console.log('_getPnL2', position.isLong, position.leverage, interest);
+
 		if (position.isLong) {
-			if (price >= position.price) {
-				pnl = margin * position.leverage * (price - position.price) / (position.price * 10**8);
+			if (price >= uint256(position.price)) {
+				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
 			} else {
-				pnl = margin * position.leverage * (position.price - price) / (position.price * 10**8);
+				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
 				pnlIsNegative = true;
 			}
 		} else {
-			if (price > position.price) {
-				pnl = margin * position.leverage * (price - position.price) / (position.price * 10**8);
+			if (price > uint256(position.price)) {
+				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
 				pnlIsNegative = true;
 			} else {
-				pnl = margin * position.leverage * (position.price - price) / (position.price * 10**8);
+				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
 			}
 		}
+
+		console.log('k1', pnl, pnlIsNegative);
 
 		// Subtract interest from P/L
-		uint256 _interest;
 		if (block.timestamp >= position.timestamp + 900) {
-			_interest = margin * position.leverage * interest * (block.timestamp - position.timestamp) / (10**12 * 360 days);
+
+			uint256 _interest = margin * uint256(position.leverage) * interest * (block.timestamp - uint256(position.timestamp)) / (10**12 * 360 days);
+
+			if (pnlIsNegative) {
+				pnl += _interest;
+			} else if (pnl < _interest) {
+				pnl = _interest - pnl;
+				pnlIsNegative = true;
+			} else {
+				pnl -= _interest;
+			}
+
 		}
 
-		if (pnlIsNegative) {
-			pnl += _interest;
-		} else if (pnl < _interest) {
-			pnl = _interest - pnl;
-			pnlIsNegative = true;
-		} else {
-			pnl -= _interest;
-		}
+		console.log('k2', pnl, pnlIsNegative);
 
 		return (pnl, pnlIsNegative);
 
@@ -696,13 +728,15 @@ contract Trading {
 		uint256 _vaultThreshold,
 		uint256 _maxSettlementTime,
 		uint256 _liquidationThreshold,
-		uint256 _liquidationBounty
+		uint256 _liquidationBounty,
+		bool _allowGlobalMarginRelease
 	) external onlyOwner {
 		minMargin = uint24(_minMargin);
 		vaultThreshold = uint48(_vaultThreshold);
 		maxSettlementTime = uint32(_maxSettlementTime);
 		liquidationThreshold = uint16(_liquidationThreshold);
 		liquidationBounty = uint16(_liquidationBounty);
+		allowGlobalMarginRelease = _allowGlobalMarginRelease;
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
