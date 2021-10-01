@@ -275,7 +275,7 @@ contract Trading {
 		require(position.price > 0, "!position");
 
 		bool isFullClose;
-		if (margin > position.margin) {
+		if (margin >= position.margin) {
 			margin = position.margin;
 			isFullClose = true;
 		}
@@ -318,7 +318,6 @@ contract Trading {
 
 		console.log('params', margin, position.margin, isLiquidation);
 		console.log('params2', isFullClose);
-
 
 		position.margin -= uint64(margin);
 

@@ -62,12 +62,17 @@ async function main() {
   
 
 
-  // // submit close order
+  // // submit partial close order
   // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
   // console.log('Submitted close order for 0.3 ETH on position ', posId);
   // receipt = await provider.getTransactionReceipt(tx.hash);
   // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
 
+  // // submit rest of close order (full)
+  // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.7", 8), false);
+  // console.log('Submitted close order for 0.7 ETH on position ', posId);
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 62222
 
 }
 
