@@ -31,6 +31,9 @@ contract Treasury is ITreasury {
 
 	// Treasury can sell assets, hedge, support Cap ecosystem, etc.
 
+	uint128 public vaultBalance;
+	uint128 public vaultThreshold = 10 * 10**8; // 10 ETH
+
 	// Events
 
 	event Swap(
@@ -46,18 +49,28 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
-	function receiveETH() external override payable {
+	function creditVault() external override payable {
+		uint256 amount = msg.value;
+		if (amount == 0) return;
+		if (vaultBalance + amount > vaultThreshold) {
+			vaultBalance = vaultThreshold;
+		} else {
+			vaultBalance += uint128(amount);
+		}
 	}
 
-	function fundVault(uint256 amount) external onlyOwner {
-		ITrading(trading).fundVault{value: amount}();
+	function debitVault(address destination, uint256 amount) external override onlyTrading {
+		if (amount == 0) return;
+		require(amount <= uint256(vaultBalance), "!vault-insufficient");
+		vaultBalance -= uint128(amount);
+		payable(destination).transfer(amount);
 	}
 
 	function fundOracle(
 		address destination, 
 		uint256 amount
 	) external override onlyOracle {
-		if (amount > address(this).balance) return;
+		if (amount > address(this).balance - uint256(vaultBalance)) return;
 		payable(destination).transfer(amount);
 	}
 
@@ -65,6 +78,7 @@ contract Treasury is ITreasury {
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
+		require(amount < address(this).balance - uint256(vaultBalance), "!insufficient");
 		payable(destination).transfer(amount);
 	}
 
@@ -83,6 +97,10 @@ contract Treasury is ITreasury {
 		uint256 amountOutMinimum,
 		uint24 poolFee
 	) external onlyOwner {
+
+		if (tokenIn == WETH9) {
+			require(amountIn < address(this).balance - uint256(vaultBalance), "!insufficient");
+		}
 
         // Approve the router to spend tokenIn
         TransferHelper.safeApprove(tokenIn, address(uniswapRouter), amountIn);
@@ -109,10 +127,6 @@ contract Treasury is ITreasury {
 
 	    uniswapRouter.refundETH();
 
-	    // refund leftover ETH to user
-	    (bool success,) = address(this).call{ value: amountIn }("");
-	    require(success, "refund failed");
-
 	    emit Swap(
 	    	amountIn,
 	    	amountOut,
@@ -130,6 +144,12 @@ contract Treasury is ITreasury {
 
 	// Owner methods
 
+	function setParams(
+		uint256 _vaultThreshold
+	) external onlyOwner {
+		vaultThreshold = uint128(_vaultThreshold);
+	}
+
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;
 	}
@@ -146,6 +166,11 @@ contract Treasury is ITreasury {
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, "!owner");
+		_;
+	}
+
+	modifier onlyTrading() {
+		require(msg.sender == trading, "!trading");
 		_;
 	}
 

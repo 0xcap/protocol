@@ -56,13 +56,11 @@ contract Trading {
 	address public oracle;
 
 	// 32 bytes
-	uint48 public vaultBalance; // 6 bytes
-	uint48 public vaultThreshold = 10 * 10**8; // 10 ETH. 6 bytes
-	uint32 public minMargin = 100000; // 0.001 ETH. 4 bytes
-	uint32 public maxSettlementTime = 30 minutes; // 4 bytes
-	uint16 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 2 bytes
-	uint40 public nextPositionId; // Incremental. 5 bytes
-	uint40 public nextCloseOrderId; // Incremental. 5 bytes
+	uint64 public minMargin = 100000; // 0.001 ETH. 8 bytes
+	uint64 public maxSettlementTime = 30 minutes; // 8 bytes
+	uint24 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 3 bytes
+	uint48 public nextPositionId; // Incremental. 6 bytes
+	uint48 public nextCloseOrderId; // Incremental. 6 bytes
 	bool public allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
@@ -368,7 +366,7 @@ contract Trading {
 		console.log('h1');
 
 		if (pnlIsNegative) {
-			_creditVault(pnl);
+			ITreasury(treasury).creditVault{value: pnl* 10**10}();
 			console.log('h2');
 			if (pnl < margin) {
 				payable(position.owner).transfer((margin - pnl) * 10**10);
@@ -379,9 +377,8 @@ contract Trading {
 				pnl = 0;
 			}
 			console.log('h4');
-			require(pnl <= vaultBalance, "!vault-insufficient");
-			vaultBalance -= uint48(pnl);
-			payable(position.owner).transfer((margin + pnl) * 10**10);
+			ITreasury(treasury).debitVault(position.owner, pnl * 10**10);
+			payable(position.owner).transfer(margin * 10**10);
 			console.log('h5');
 		}
 
@@ -509,14 +506,9 @@ contract Trading {
 		}
 
 		if (totalVaultReward > 0) {
-			_creditVault(totalVaultReward);
+			ITreasury(treasury).creditVault{value: totalVaultReward * 10**10}();
 		}
 
-	}
-
-	function fundVault() external payable {
-		require(msg.value > 0, "!value");
-		vaultBalance += uint48(msg.value / 10**10);
 	}
 
 	// Internal methods
@@ -584,22 +576,7 @@ contract Trading {
 		}
 	}
 
-	// Credit vault with trader losses and send excess to treasury
-	function _creditVault(uint256 amount) internal {
-		console.log('_creditVault', amount, vaultBalance, vaultThreshold);
-		if (amount == 0) return;
-		if (vaultBalance + amount > vaultThreshold) {
-			console.log('j1');
-			uint256 excess = vaultBalance + amount - vaultThreshold;
-			console.log('j2', excess);
-			vaultBalance = vaultThreshold;
-			ITreasury(treasury).receiveETH{value: excess * 10**10}();
-		} else {
-			vaultBalance += uint48(amount);
-		}
-		console.log('j3');
-	}
-
+	
 	function _getPnL(
 		Position memory position,
 		uint256 price,
@@ -728,14 +705,12 @@ contract Trading {
 
 	function updateParams(
 		uint256 _minMargin,
-		uint256 _vaultThreshold,
 		uint256 _maxSettlementTime,
 		uint256 _liquidationThreshold,
 		bool _allowGlobalMarginRelease
 	) external onlyOwner {
-		minMargin = uint32(_minMargin);
-		vaultThreshold = uint48(_vaultThreshold);
-		maxSettlementTime = uint32(_maxSettlementTime);
+		minMargin = uint64(_minMargin);
+		maxSettlementTime = uint64(_maxSettlementTime);
 		liquidationThreshold = uint16(_liquidationThreshold);
 		allowGlobalMarginRelease = _allowGlobalMarginRelease;
 	}
