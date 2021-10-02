@@ -181,8 +181,7 @@ contract Trading {
 		}
 
 		// Set price
-		price = _validatePrice(product, price);
-		price = _addFeeToPrice(price, product.fee, position.isLong);
+		price = _validatePrice(product, price, position.isLong);
 
 		position.price = uint64(price);
 
@@ -298,8 +297,7 @@ contract Trading {
 
 			require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
 			
-			price = _validatePrice(product, price);
-			price = _addFeeToPrice(price, product.fee, !position.isLong);
+			price = _validatePrice(product, price, !position.isLong);
 
 			console.log('price', product.fee, price);
 
@@ -515,10 +513,12 @@ contract Trading {
 
 	function _validatePrice(
 		Product memory product,
-		uint256 price
+		uint256 price,
+		bool isLong
 	) internal view returns(uint256) {
 
 		uint256 chainlinkPrice = _getChainlinkPrice(product.feed);
+		
 		if (chainlinkPrice == 0) {
 			require(price > 0, "!price");
 			return price;
@@ -530,7 +530,11 @@ contract Trading {
 			price > chainlinkPrice + chainlinkPrice * product.oracleMaxDeviation / 10**4 ||
 			price < chainlinkPrice - chainlinkPrice * product.oracleMaxDeviation / 10**4
 		) {
-			return chainlinkPrice;
+			if (isLong) {
+				return chainlinkPrice + chainlinkPrice * product.fee / 10**4;
+			} else {
+				return chainlinkPrice - chainlinkPrice * product.fee / 10**4;
+			}
 		}
 
 		return price;
@@ -563,19 +567,6 @@ contract Trading {
 		return feedPrice;
 
 	}
-
-	function _addFeeToPrice(
-		uint256 price,
-		uint256 fee,
-		bool isLong
-	) internal pure returns(uint256) {
-		if (isLong) {
-			return price + price * fee / 10**4;
-		} else {
-			return price - price * fee / 10**4;
-		}
-	}
-
 	
 	function _getPnL(
 		Position memory position,
