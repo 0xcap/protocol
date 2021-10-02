@@ -11,10 +11,10 @@ module.exports = {
       forking: {
         url: process.env.FORKING_URL
       },
-      mining: {
-        auto: true,
-        interval: [10000, 20000]
-      }
+      // mining: {
+      //   auto: true,
+      //   interval: [10000, 20000]
+      // }
     },
     rinkeby: {
       url: process.env.RINKEBY_URL,

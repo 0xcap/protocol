@@ -29,7 +29,8 @@ contract Trading {
 
 	struct Position {
 		// 32 bytes
-		uint64 productId; // 8 bytes
+		uint40 closeOrderId; // 5 bytes
+		uint24 productId; // 3 bytes
 		uint64 leverage; // 8 bytes
 		uint64 price; // 8 bytes
 		uint64 margin; // 8 bytes
@@ -62,7 +63,7 @@ contract Trading {
 	uint16 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 2 bytes
 	uint40 public nextPositionId; // Incremental. 5 bytes
 	uint40 public nextCloseOrderId; // Incremental. 5 bytes
-	bool allowGlobalMarginRelease = false;
+	bool public allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
@@ -99,6 +100,11 @@ contract Trading {
 		bool pnlIsNegative, 
 		bool wasLiquidated
 	);
+	event OpenOrder(
+		uint256 indexed positionId,
+		address indexed user,
+		uint256 indexed productId
+	);
 
 	// Constructor
 
@@ -129,14 +135,21 @@ contract Trading {
 		// Add position
 		nextPositionId++;
 		positions[nextPositionId] = Position({
+			closeOrderId: 0,
 			owner: msg.sender,
-			productId: uint64(productId),
+			productId: uint24(productId),
 			margin: uint64(margin),
 			leverage: uint64(leverage),
 			price: 0,
 			timestamp: uint88(block.timestamp),
 			isLong: isLong
 		});
+
+		emit OpenOrder(
+			nextPositionId,
+			msg.sender,
+			productId
+		);
 
 	}
 
@@ -215,14 +228,14 @@ contract Trading {
 		bool releaseMargin
 	) external {
 
-		// ! Multiple close orders can be submitted on the same position before they are settled
-
 		require(margin >= minMargin, "!margin");
 
 		// Check position
-		Position memory position = positions[positionId];
+		Position storage position = positions[positionId];
 		require(msg.sender == owner || msg.sender == position.owner, "!owner");
-		require(position.price > 0 && position.margin > 0, "!position");
+		require(position.margin > 0, "!position");
+		require(position.closeOrderId == 0, "!closing");
+		require(position.price > 0, "!price");
 
 		// Check product
 		Product memory product = products[position.productId];
@@ -233,6 +246,7 @@ contract Trading {
 		if (msg.sender == owner) {
 			ownerOverride = true;
 			releaseMargin = true;
+			margin = position.margin;
 		}
 
 		nextCloseOrderId++;
@@ -244,6 +258,8 @@ contract Trading {
 			releaseMargin: releaseMargin,
 			ownerOverride: ownerOverride
 		});
+
+		position.closeOrderId = uint40(nextCloseOrderId);
 
 	}
 
@@ -265,12 +281,12 @@ contract Trading {
 		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
-		require(position.price > 0 && position.margin > 0, "!position");
+		require(position.margin > 0, "!position");
+		require(position.closeOrderId == orderId, "!order");
+		require(position.price > 0, "!price");
 
-		bool isFullClose;
 		if (margin >= position.margin) {
 			margin = position.margin;
-			isFullClose = true;
 		}
 
 		Product storage product = products[position.productId];
@@ -306,11 +322,9 @@ contract Trading {
 			pnl = position.margin;
 			margin = position.margin;
 			isLiquidation = true;
-			isFullClose = true;
 		}
 
 		console.log('params', margin, position.margin, isLiquidation);
-		console.log('params2', isFullClose);
 
 		position.margin -= uint64(margin);
 
@@ -329,13 +343,11 @@ contract Trading {
 			}
 		}
 
-		address positionOwner = position.owner;
-
 		emit ClosePosition(
 			positionId, 
-			positionOwner, 
+			position.owner, 
 			position.productId, 
-			isFullClose,
+			position.margin == 0,
 			price, 
 			position.price,
 			margin, 
@@ -345,8 +357,10 @@ contract Trading {
 			isLiquidation
 		);
 
-		if (isFullClose) {
+		if (position.margin == 0) {
 			delete positions[positionId];
+		} else {
+			position.closeOrderId = 0;
 		}
 
 		delete closeOrders[orderId];
@@ -357,7 +371,7 @@ contract Trading {
 			_creditVault(pnl);
 			console.log('h2');
 			if (pnl < margin) {
-				payable(positionOwner).transfer((margin - pnl) * 10**10);
+				payable(position.owner).transfer((margin - pnl) * 10**10);
 			}
 			console.log('h3');
 		} else {
@@ -367,7 +381,7 @@ contract Trading {
 			console.log('h4');
 			require(pnl <= vaultBalance, "!vault-insufficient");
 			vaultBalance -= uint48(pnl);
-			payable(positionOwner).transfer((margin + pnl) * 10**10);
+			payable(position.owner).transfer((margin + pnl) * 10**10);
 			console.log('h5');
 		}
 
@@ -380,9 +394,11 @@ contract Trading {
 		Order memory _closeOrder = closeOrders[orderId];
 		if (_closeOrder.positionId == 0) return;
 		
-		Position memory position = positions[_closeOrder.positionId];
+		Position storage position = positions[_closeOrder.positionId];
 		if (msg.sender != oracle && msg.sender != position.owner) return;
+		if (position.closeOrderId != orderId) return;
 		
+		position.closeOrderId = 0;
 		delete closeOrders[orderId];
 
 	}
@@ -398,6 +414,7 @@ contract Trading {
 		// Check position
 		Position storage position = positions[positionId];
 		require(msg.sender == position.owner, "!owner");
+		require(position.price > 0, "!price");
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
@@ -688,8 +705,6 @@ contract Trading {
 		return products[productId];
 	}
 
-	// TODO: getOrders
-
 	function getPositions(uint256[] calldata positionIds) external view returns(Position[] memory _positions) {
 		uint256 length = positionIds.length;
 		_positions = new Position[](length);
@@ -697,6 +712,15 @@ contract Trading {
 			_positions[i] = positions[positionIds[i]];
 		}
 		return _positions;
+	}
+
+	function getOrders(uint256[] calldata orderIds) external view returns(Order[] memory _orders) {
+		uint256 length = orderIds.length;
+		_orders = new Order[](length);
+		for (uint256 i=0; i < length; i++) {
+			_orders[i] = closeOrders[orderIds[i]];
+		}
+		return _orders;
 	}
 
 	// Governance methods

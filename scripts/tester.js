@@ -29,16 +29,16 @@ async function main() {
   console.log('user', user.address);
 
   const tradingAddress = '0x0Dd99d9f56A14E9D53b2DdC62D9f0bAbe806647A';
-  //const oracleAddress = '0xc9952Fc93Fa9bE383ccB39008c786b9f94eAc95d';
-  //const treasuryAddress = '0x2625760C4A8e8101801D3a48eE64B2bEA42f1E96';
+  const oracleAddress = '0xeAd789bd8Ce8b9E94F5D0FCa99F8787c7e758817';
+  const treasuryAddress = '0x95775fD3Afb1F4072794CA4ddA27F2444BCf8Ac3';
 
   console.log('Trading balance', formatUnits(await provider.getBalance(tradingAddress)));
-  //console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
-  //console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
+  console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
+  console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(tradingAddress);
-  //const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
-  //const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
+  const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
+  const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
 
   let tx, receipt;
 
@@ -50,8 +50,8 @@ async function main() {
   // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 77291
   
 
-  const posId = await trading.nextPositionId();
-  console.log('Position', posId, await trading.getPositions([posId]));
+  // const posId = await trading.nextPositionId();
+  // console.log('Position', posId, await trading.getPositions([posId]));
   
   // // submit partial close order
   // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.3", 8), false);
@@ -71,8 +71,24 @@ async function main() {
   // receipt = await provider.getTransactionReceipt(tx.hash);
   // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
 
-  // Liquidate positions
-  
+
+  // Treasury
+
+  // Fund vault
+  // await treasury.fundVault(parseUnits("1"));
+  // console.log('Trading balance', formatUnits(await provider.getBalance(tradingAddress)));
+  // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
+
+  // Send ETH
+  // console.log('Owner balance pre', formatUnits(await provider.getBalance(owner.address)));
+  // await treasury.sendETH(owner.address, parseUnits("1.221"));
+  // console.log('Owner balance', formatUnits(await provider.getBalance(owner.address)));
+  // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
+
+  // Transfer from owner to treasury
+  // console.log('Owner balance pre', formatUnits(await provider.getBalance(owner.address)));
+  // await owner.sendTransaction({to: treasuryAddress, value: parseUnits("1.454")});
+  // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
 
 }
 
