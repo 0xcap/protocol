@@ -234,8 +234,8 @@ contract Trading {
 		Position storage position = positions[positionId];
 		require(msg.sender == owner || msg.sender == position.owner, "!owner");
 		require(position.margin > 0, "!position");
+		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
-		require(position.price > 0, "!price");
 
 		// Check product
 		Product memory product = products[position.productId];
@@ -283,7 +283,7 @@ contract Trading {
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 		require(position.closeOrderId == orderId, "!order");
-		require(position.price > 0, "!price");
+		require(position.price > 0, "!opening");
 
 		if (margin >= position.margin) {
 			margin = position.margin;
@@ -414,7 +414,8 @@ contract Trading {
 		// Check position
 		Position storage position = positions[positionId];
 		require(msg.sender == position.owner, "!owner");
-		require(position.price > 0, "!price");
+		require(position.price > 0, "!opening");
+		require(position.closeOrderId == 0, "!closing");
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
