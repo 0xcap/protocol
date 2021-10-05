@@ -44,7 +44,8 @@ contract Trading {
 		uint64 positionId; // 8 bytes
 		uint32 productId; // 4 bytes
 		uint64 margin; // 8 bytes
-		uint80 timestamp; // 10 bytes
+		uint72 timestamp; // 9 bytes
+		bool isLong; // 1 byte
 		bool releaseMargin; // 1 byte
 		bool ownerOverride; // 1 byte
 	}
@@ -90,6 +91,7 @@ contract Trading {
 		address indexed user, 
 		uint256 indexed productId, 
 		bool indexed isFullClose, 
+		bool isLong,
 		uint256 price, 
 		uint256 entryPrice, 
 		uint256 margin, 
@@ -251,7 +253,8 @@ contract Trading {
 			positionId: uint64(positionId),
 			productId: uint32(position.productId),
 			margin: uint64(margin),
-			timestamp: uint80(block.timestamp),
+			timestamp: uint72(block.timestamp),
+			isLong: position.isLong,
 			releaseMargin: releaseMargin,
 			ownerOverride: ownerOverride
 		});
@@ -344,6 +347,7 @@ contract Trading {
 			position.owner, 
 			position.productId, 
 			position.margin == 0,
+			position.isLong,
 			price, 
 			position.price,
 			margin, 
@@ -488,6 +492,7 @@ contract Trading {
 					position.owner, 
 					position.productId, 
 					true,
+					position.isLong,
 					price, 
 					position.price,
 					position.margin, 
@@ -518,7 +523,7 @@ contract Trading {
 	) internal view returns(uint256) {
 
 		uint256 chainlinkPrice = _getChainlinkPrice(product.feed);
-		
+
 		if (chainlinkPrice == 0) {
 			require(price > 0, "!price");
 			return price;
