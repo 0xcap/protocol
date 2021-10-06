@@ -125,8 +125,7 @@ async function main() {
   await treasury.setTrading(trading.address);
   await treasury.setOracle(oracle.address);
 
-  await treasury.receiveETH({value: parseUnits("20")});
-  await treasury.fundVault(parseUnits("10"));
+  await treasury.creditVault({value: parseUnits("20")});
 
   return;
 

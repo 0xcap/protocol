@@ -6,6 +6,8 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "./interfaces/ITreasury.sol";
 
+// TODO: explicit cast everything
+
 contract Trading {
 
 	// All amounts are stored with 8 decimals
@@ -125,7 +127,7 @@ contract Trading {
 		require(leverage >= 10**8, "!leverage");
 
 		// Check product
-		Product memory product = products[productId];
+		Product storage product = products[productId];
 		require(product.isActive, "!product-active");
 		require(leverage <= product.maxLeverage, "!max-leverage");
 
@@ -266,8 +268,6 @@ contract Trading {
 		position.closeOrderId = uint40(nextCloseOrderId);
 
 	}
-
-	// TODO: explicit cast everything
 
 	function releaseMargin(uint256 positionId) external onlyOwner {
 
