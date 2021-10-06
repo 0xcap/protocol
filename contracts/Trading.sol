@@ -132,6 +132,14 @@ contract Trading {
 		require(product.isActive, "!product-active");
 		require(leverage <= product.maxLeverage, "!max-leverage");
 
+		// Check exposure
+		uint256 amount = margin * leverage / 10**8;
+		if (isLong) {
+			require(product.openInterestLong + amount <= product.maxExposure + product.openInterestShort, "!exposure-long");
+		} else {
+			require(product.openInterestShort + amount <= product.maxExposure + product.openInterestLong, "!exposure-short");
+		}
+
 		// Add position
 		nextPositionId++;
 		positions[nextPositionId] = Position({
