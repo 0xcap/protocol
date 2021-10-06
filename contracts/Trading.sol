@@ -20,7 +20,7 @@ contract Trading {
 		uint16 interest; // For 360 days, in bps. 5.35% = 535. 2 bytes
 		bool isActive; // 1 byte
 		// 32 bytes
-		uint64 maxExposure; // Maximum allowed long/short imbalance. 8 bytes
+		uint64 maxExposure; // Maximum tolerated long/short imbalance. 8 bytes
 		uint64 openInterestLong; // 8 bytes
 		uint64 openInterestShort; // 8 bytes
 		uint32 oracleMaxDeviation; // 4 bytes
@@ -44,10 +44,8 @@ contract Trading {
 		uint64 positionId; // 8 bytes
 		uint32 productId; // 4 bytes
 		uint64 margin; // 8 bytes
-		uint72 timestamp; // 9 bytes
+		uint88 timestamp; // 11 bytes
 		bool isLong; // 1 byte
-		bool releaseMargin; // 1 byte
-		bool ownerOverride; // 1 byte
 	}
 
 	// Variables
@@ -58,11 +56,10 @@ contract Trading {
 
 	// 32 bytes
 	uint64 public minMargin = 100000; // 0.001 ETH. 8 bytes
-	uint64 public maxSettlementTime = 30 minutes; // 8 bytes
-	uint24 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 3 bytes
+	uint64 public maxSettlementTime = 10 minutes; // 8 bytes
+	uint32 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 4 bytes
 	uint48 public nextPositionId; // Incremental. 6 bytes
 	uint48 public nextCloseOrderId; // Incremental. 6 bytes
-	bool public allowGlobalMarginRelease = false;
 
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
@@ -132,12 +129,14 @@ contract Trading {
 		require(product.isActive, "!product-active");
 		require(leverage <= product.maxLeverage, "!max-leverage");
 
-		// Check exposure
+		// Update exposure
 		uint256 amount = margin * leverage / 10**8;
 		if (isLong) {
-			require(product.openInterestLong + amount <= product.maxExposure + product.openInterestShort, "!exposure-long");
+			product.openInterestLong += uint64(amount);
+			require(product.openInterestLong <= product.maxExposure + product.openInterestShort, "!exposure-long");
 		} else {
-			require(product.openInterestShort + amount <= product.maxExposure + product.openInterestLong, "!exposure-short");
+			product.openInterestShort += uint64(amount);
+			require(product.openInterestShort <= product.maxExposure + product.openInterestLong, "!exposure-short");
 		}
 
 		// Add position
@@ -180,16 +179,6 @@ contract Trading {
 
 		Product storage product = products[position.productId];
 
-		// Update exposure
-		uint256 amount = position.margin * position.leverage / 10**8;
-		if (position.isLong) {
-			product.openInterestLong += uint64(amount);
-			require(product.openInterestLong <= product.maxExposure + product.openInterestShort, "!exposure-long");
-		} else {
-			product.openInterestShort += uint64(amount);
-			require(product.openInterestShort <= product.maxExposure + product.openInterestLong, "!exposure-short");
-		}
-
 		// Set price
 		price = _validatePrice(product, price, position.isLong);
 
@@ -221,6 +210,24 @@ contract Trading {
 		uint256 margin = position.margin;
 		address positionOwner = position.owner;
 
+		Product storage product = products[position.productId];
+
+		// Reverse exposure
+		uint256 amount = position.margin * position.leverage / 10**8;
+		if (position.isLong) {
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint64(amount);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= uint64(amount);
+			} else {
+				product.openInterestShort = 0;
+			}
+		}
+
 		delete positions[positionId];
 
 		// Refund margin
@@ -231,8 +238,7 @@ contract Trading {
 	// Submit order to close a position
 	function submitCloseOrder( 
 		uint256 positionId, 
-		uint256 margin,
-		bool releaseMargin
+		uint256 margin
 	) external {
 
 		require(margin >= minMargin, "!margin");
@@ -248,23 +254,13 @@ contract Trading {
 		Product memory product = products[position.productId];
 		require(block.timestamp >= position.timestamp + product.minTradeDuration, "!duration");
 
-		// Governance can release margin from any position to protect from malicious profits
-		bool ownerOverride;
-		if (msg.sender == owner) {
-			ownerOverride = true;
-			releaseMargin = true;
-			margin = position.margin;
-		}
-
 		nextCloseOrderId++;
 		closeOrders[nextCloseOrderId] = Order({
 			positionId: uint64(positionId),
 			productId: uint32(position.productId),
 			margin: uint64(margin),
-			timestamp: uint72(block.timestamp),
-			isLong: position.isLong,
-			releaseMargin: releaseMargin,
-			ownerOverride: ownerOverride
+			timestamp: uint88(block.timestamp),
+			isLong: position.isLong
 		});
 
 		position.closeOrderId = uint40(nextCloseOrderId);
@@ -272,6 +268,54 @@ contract Trading {
 	}
 
 	// TODO: explicit cast everything
+
+	function releaseMargin(uint256 positionId) external onlyOwner {
+
+		Position storage position = positions[positionId];
+		require(position.margin > 0, "!position");
+
+		Product storage product = products[position.productId];
+
+		uint256 amount = position.margin * uint256(position.leverage) / 10**8;
+		// Set exposure
+		if (position.isLong) {
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint64(amount);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= uint64(amount);
+			} else {
+				product.openInterestShort = 0;
+			}
+		}
+
+		emit ClosePosition(
+			positionId, 
+			position.owner, 
+			position.productId, 
+			true,
+			position.isLong,
+			position.price, 
+			position.price,
+			position.margin, 
+			position.leverage, 
+			0, 
+			false, 
+			false
+		);
+
+		payable(position.owner).transfer(position.margin * 10**10);
+
+		if (position.closeOrderId > 0) {
+			delete closeOrders[position.closeOrderId];
+		}
+
+		delete positions[positionId];
+
+	}
 
 	// Closes position at the fetched price
 	function settleCloseOrder(
@@ -297,31 +341,17 @@ contract Trading {
 			margin = position.margin;
 		}
 
+		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
+
 		Product storage product = products[position.productId];
+		
+		price = _validatePrice(product, price, !position.isLong);
 
-		uint256 pnl;
-		bool pnlIsNegative;
+		console.log('price', product.fee, price);
 
-		if (_closeOrder.releaseMargin && allowGlobalMarginRelease) {
-			(pnl, pnlIsNegative) = (0, false);
-		} else {
-
-			require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
-			
-			price = _validatePrice(product, price, !position.isLong);
-
-			console.log('price', product.fee, price);
-
-			(pnl, pnlIsNegative) = _getPnL(position, price, margin, product.interest);
-
-		}
+		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
 		console.log('pnl', pnl, pnlIsNegative);
-
-		// Can't release margin on pnl negative position
-		if (_closeOrder.ownerOverride && pnlIsNegative) {
-			revert("!override");
-		}
 
 		// Check if it's a liquidation
 		bool isLiquidation;
@@ -335,16 +365,17 @@ contract Trading {
 
 		position.margin -= uint64(margin);
 
+		uint256 amount = margin * uint256(position.leverage) / 10**8;
 		// Set exposure
 		if (position.isLong) {
-			if (product.openInterestLong >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestLong -= uint64(margin * uint256(position.leverage) / 10**8);
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint64(amount);
 			} else {
 				product.openInterestLong = 0;
 			}
 		} else {
-			if (product.openInterestShort >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestShort -= uint64(margin * uint256(position.leverage) / 10**8);
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= uint64(amount);
 			} else {
 				product.openInterestShort = 0;
 			}
@@ -383,9 +414,6 @@ contract Trading {
 			}
 			console.log('h3');
 		} else {
-			if (_closeOrder.releaseMargin) {
-				pnl = 0;
-			}
 			console.log('h4');
 			ITreasury(treasury).debitVault(position.owner, pnl * 10**10);
 			payable(position.owner).transfer(margin * 10**10);
@@ -710,13 +738,11 @@ contract Trading {
 	function updateParams(
 		uint256 _minMargin,
 		uint256 _maxSettlementTime,
-		uint256 _liquidationThreshold,
-		bool _allowGlobalMarginRelease
+		uint256 _liquidationThreshold
 	) external onlyOwner {
 		minMargin = uint64(_minMargin);
 		maxSettlementTime = uint64(_maxSettlementTime);
 		liquidationThreshold = uint16(_liquidationThreshold);
-		allowGlobalMarginRelease = _allowGlobalMarginRelease;
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
