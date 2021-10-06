@@ -20,14 +20,10 @@ contract Oracle is IOracle {
 	uint256 public costPerRequest = 6 * 10**14; // 0.0006 ETH
 	uint256 public requestsSinceFunding;
 
-	// Mappings
-	mapping(address => uint256) prices;
-	mapping(address => uint256) timestamps;
-
 	event SettlementError(
 		uint256 indexed orderId,
-		string reason,
-		bool isClose
+		bool indexed isClose,
+		string reason
 	);
 
 	constructor() {
@@ -43,8 +39,6 @@ contract Oracle is IOracle {
 
 		if (positionIds.length > 0) {
 
-			console.log('positionIds', positionIds[0], positionPrices[0]);
-
 			for (uint256 i = 0; i < positionIds.length; i++) {
 
 				uint256 positionId = positionIds[i];
@@ -57,8 +51,8 @@ contract Oracle is IOracle {
 					console.log("Error position", positionId, reason);
 					emit SettlementError(
 						positionId,
-						reason,
-						false
+						false,
+						reason
 					);
 				}
 
@@ -67,8 +61,6 @@ contract Oracle is IOracle {
 		}
 
 		if (orderIds.length > 0) {
-
-			console.log('orderIds', orderIds[0], orderPrices[0]);
 
 			for (uint256 i = 0; i < orderIds.length; i++) {
 
@@ -82,8 +74,8 @@ contract Oracle is IOracle {
 					console.log("Error order", orderId, reason);
 					emit SettlementError(
 						orderId,
-						reason,
-						true
+						true,
+						reason
 					);
 				}
 
@@ -103,9 +95,9 @@ contract Oracle is IOracle {
 		_tallyOracleRequests(positionIds.length);
 	}
 
-	function _tallyOracleRequests(uint256 requests) internal {
-		if (requests == 0) return;
-		requestsSinceFunding += requests;
+	function _tallyOracleRequests(uint256 newRequests) internal {
+		if (newRequests == 0) return;
+		requestsSinceFunding += newRequests;
 		if (requestsSinceFunding >= requestsPerFunding) {
 			requestsSinceFunding = 0;
 			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);

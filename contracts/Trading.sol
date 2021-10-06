@@ -52,7 +52,7 @@ contract Trading {
 
 	// Variables
 
-	address public owner; // Contract owner
+	address public owner; 
 	address public treasury;
 	address public oracle;
 
@@ -168,18 +168,14 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		console.log('settleNewPosition', positionId, price);
-
 		// Check position
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
 		require(position.price == 0, "!settled");
 
-		console.log('timestamps', block.timestamp, position.timestamp);
-
 		require(block.timestamp <= position.timestamp + maxSettlementTime, "!time");
 
-		Product storage product = products[position.productId];
+		Product memory product = products[position.productId];
 
 		// Set price
 		price = _validatePrice(product, price, position.isLong);
@@ -203,14 +199,14 @@ contract Trading {
 
 		// Sanity check position. Checks should fail silently
 		Position memory position = positions[positionId];
-		if (
-			position.price != 0 ||
-			position.margin == 0 ||
-			msg.sender != position.owner && msg.sender != oracle
-		) return;
-
 		uint256 margin = position.margin;
 		address positionOwner = position.owner;
+
+		if (
+			position.price != 0 ||
+			margin == 0 ||
+			msg.sender != positionOwner && msg.sender != oracle
+		) return;
 
 		Product storage product = products[position.productId];
 
@@ -247,7 +243,7 @@ contract Trading {
 
 		// Check position
 		Position storage position = positions[positionId];
-		require(msg.sender == owner || msg.sender == position.owner, "!owner");
+		require(msg.sender == position.owner, "!owner");
 		require(position.margin > 0, "!position");
 		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
@@ -269,66 +265,18 @@ contract Trading {
 
 	}
 
-	function releaseMargin(uint256 positionId) external onlyOwner {
-
-		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-
-		Product storage product = products[position.productId];
-
-		uint256 amount = position.margin * uint256(position.leverage) / 10**8;
-		// Set exposure
-		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint64(amount);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= uint64(amount);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
-		emit ClosePosition(
-			positionId, 
-			position.owner, 
-			position.productId, 
-			true,
-			position.isLong,
-			position.price, 
-			position.price,
-			position.margin, 
-			position.leverage, 
-			0, 
-			false, 
-			false
-		);
-
-		payable(position.owner).transfer(position.margin * 10**10);
-
-		if (position.closeOrderId > 0) {
-			delete closeOrders[position.closeOrderId];
-		}
-
-		delete positions[positionId];
-
-	}
-
 	// Closes position at the fetched price
 	function settleCloseOrder(
 		uint256 orderId, 
 		uint256 price
 	) external onlyOracle {
 
-		console.log('settleCloseOrder', orderId, price);
-
 		// Check order and params
 		Order memory _closeOrder = closeOrders[orderId];
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!margin");
+
+		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
 
 		uint256 positionId = _closeOrder.positionId;
 
@@ -341,17 +289,11 @@ contract Trading {
 			margin = position.margin;
 		}
 
-		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
-
 		Product storage product = products[position.productId];
 		
 		price = _validatePrice(product, price, !position.isLong);
 
-		console.log('price', product.fee, price);
-
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
-
-		console.log('pnl', pnl, pnlIsNegative);
 
 		// Check if it's a liquidation
 		bool isLiquidation;
@@ -361,29 +303,28 @@ contract Trading {
 			isLiquidation = true;
 		}
 
-		console.log('params', margin, position.margin, isLiquidation);
-
 		position.margin -= uint64(margin);
 
-		uint256 amount = margin * uint256(position.leverage) / 10**8;
 		// Set exposure
 		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint64(amount);
+			if (product.openInterestLong >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestLong -= uint64(margin * uint256(position.leverage) / 10**8);
 			} else {
 				product.openInterestLong = 0;
 			}
 		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= uint64(amount);
+			if (product.openInterestShort >= margin * uint256(position.leverage) / 10**8) {
+				product.openInterestShort -= uint64(margin * uint256(position.leverage) / 10**8);
 			} else {
 				product.openInterestShort = 0;
 			}
 		}
 
+		address positionOwner = position.owner;
+
 		emit ClosePosition(
 			positionId, 
-			position.owner, 
+			positionOwner, 
 			position.productId, 
 			position.margin == 0,
 			position.isLong,
@@ -404,20 +345,14 @@ contract Trading {
 
 		delete closeOrders[orderId];
 
-		console.log('h1');
-
 		if (pnlIsNegative) {
-			ITreasury(treasury).creditVault{value: pnl* 10**10}();
-			console.log('h2');
+			ITreasury(treasury).creditVault{value: pnl * 10**10}();
 			if (pnl < margin) {
-				payable(position.owner).transfer((margin - pnl) * 10**10);
+				payable(positionOwner).transfer((margin - pnl) * 10**10);
 			}
-			console.log('h3');
 		} else {
-			console.log('h4');
-			ITreasury(treasury).debitVault(position.owner, pnl * 10**10);
-			payable(position.owner).transfer(margin * 10**10);
-			console.log('h5');
+			ITreasury(treasury).debitVault(positionOwner, pnl * 10**10);
+			payable(positionOwner).transfer(margin * 10**10);
 		}
 
 	}
@@ -435,6 +370,57 @@ contract Trading {
 		
 		position.closeOrderId = 0;
 		delete closeOrders[orderId];
+
+	}
+
+	function releaseMargin(uint256 positionId) external onlyOwner {
+
+		Position storage position = positions[positionId];
+		require(position.margin > 0, "!position");
+
+		Product storage product = products[position.productId];
+
+		uint256 margin = position.margin;
+		address positionOwner = position.owner;
+
+		uint256 amount = margin * uint256(position.leverage) / 10**8;
+		// Set exposure
+		if (position.isLong) {
+			if (product.openInterestLong >= amount) {
+				product.openInterestLong -= uint64(amount);
+			} else {
+				product.openInterestLong = 0;
+			}
+		} else {
+			if (product.openInterestShort >= amount) {
+				product.openInterestShort -= uint64(amount);
+			} else {
+				product.openInterestShort = 0;
+			}
+		}
+
+		emit ClosePosition(
+			positionId, 
+			positionOwner, 
+			position.productId, 
+			true,
+			position.isLong,
+			position.price, 
+			position.price,
+			margin, 
+			position.leverage, 
+			0, 
+			false, 
+			false
+		);
+
+		if (position.closeOrderId > 0) {
+			delete closeOrders[position.closeOrderId];
+		}
+
+		delete positions[positionId];
+
+		payable(positionOwner).transfer(margin * 10**10);
 
 	}
 
@@ -500,9 +486,6 @@ contract Trading {
 			}
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
-
-			console.log('liq', positionId, pnl, pnlIsNegative);
-			console.log('pos', position.margin, liquidationThreshold);
 
 			if (pnlIsNegative && pnl >= uint256(position.margin) * liquidationThreshold / 10**4) {
 
@@ -616,11 +599,6 @@ contract Trading {
 		uint256 interest
 	) internal view returns(uint256 pnl, bool pnlIsNegative) {
 
-		// position.price = 3266, price = 3254
-
-		console.log('_getPnL', price, position.price, margin);
-		console.log('_getPnL2', position.isLong, position.leverage, interest);
-
 		if (position.isLong) {
 			if (price >= uint256(position.price)) {
 				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
@@ -637,8 +615,6 @@ contract Trading {
 			}
 		}
 
-		console.log('k1', pnl, pnlIsNegative);
-
 		// Subtract interest from P/L
 		if (block.timestamp >= position.timestamp + 900) {
 
@@ -654,8 +630,6 @@ contract Trading {
 			}
 
 		}
-
-		console.log('k2', pnl, pnlIsNegative);
 
 		return (pnl, pnlIsNegative);
 
@@ -750,7 +724,8 @@ contract Trading {
 		Product memory product = products[productId];
 		require(product.maxLeverage == 0, "!product-exists");
 
-		require(_product.maxLeverage > 0, "!max-leverage");
+		require(_product.maxLeverage >= 10**8, "!max-leverage");
+		require(_product.maxExposure > 0, "!max-exposure");
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 
 		products[productId] = Product({
@@ -771,9 +746,10 @@ contract Trading {
 	function updateProduct(uint256 productId, Product memory _product) external onlyOwner {
 
 		Product storage product = products[productId];
-		require(product.maxLeverage > 0, "!product-exists");
+		require(product.maxLeverage > 0, "!product-does-not-exist");
 
-		require(_product.maxLeverage >= 1 * 10**8, "!max-leverage");
+		require(_product.maxLeverage >= 10**8, "!max-leverage");
+		require(_product.maxExposure > 0, "!max-exposure");
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 
 		product.feed = _product.feed;

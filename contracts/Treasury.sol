@@ -31,8 +31,8 @@ contract Treasury is ITreasury {
 
 	// Treasury can sell assets, hedge, support Cap ecosystem, etc.
 
-	uint128 public vaultBalance;
-	uint128 public vaultThreshold = 10 * 10**8; // 10 ETH
+	uint256 public vaultBalance;
+	uint256 public vaultThreshold = 10 ether;
 
 	// Events
 
@@ -55,22 +55,28 @@ contract Treasury is ITreasury {
 		if (vaultBalance + amount > vaultThreshold) {
 			vaultBalance = vaultThreshold;
 		} else {
-			vaultBalance += uint128(amount);
+			vaultBalance += amount;
 		}
 	}
 
 	function debitVault(address destination, uint256 amount) external override onlyTrading {
 		if (amount == 0) return;
-		require(amount <= uint256(vaultBalance), "!vault-insufficient");
-		vaultBalance -= uint128(amount);
+		require(amount <= vaultBalance, "!vault-insufficient");
+		vaultBalance -= amount;
 		payable(destination).transfer(amount);
+	}
+
+	// Move funds to vault internally
+	function fundVault(uint256 amount) external onlyOwner {
+		require(amount < address(this).balance - vaultBalance, "!insufficient");
+		vaultBalance += amount;
 	}
 
 	function fundOracle(
 		address destination, 
 		uint256 amount
 	) external override onlyOracle {
-		if (amount > address(this).balance - uint256(vaultBalance)) return;
+		if (amount > address(this).balance - vaultBalance) return;
 		payable(destination).transfer(amount);
 	}
 
@@ -78,7 +84,7 @@ contract Treasury is ITreasury {
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
-		require(amount < address(this).balance - uint256(vaultBalance), "!insufficient");
+		require(amount < address(this).balance - vaultBalance, "!insufficient");
 		payable(destination).transfer(amount);
 	}
 
@@ -99,7 +105,7 @@ contract Treasury is ITreasury {
 	) external onlyOwner {
 
 		if (tokenIn == WETH9) {
-			require(amountIn < address(this).balance - uint256(vaultBalance), "!insufficient");
+			require(amountIn < address(this).balance - vaultBalance, "!insufficient");
 		}
 
         // Approve the router to spend tokenIn
@@ -125,8 +131,6 @@ contract Treasury is ITreasury {
 	    	amountOut = uniswapRouter.exactInputSingle(params);
 	    }
 
-	    uniswapRouter.refundETH();
-
 	    emit Swap(
 	    	amountIn,
 	    	amountOut,
@@ -147,7 +151,7 @@ contract Treasury is ITreasury {
 	function setParams(
 		uint256 _vaultThreshold
 	) external onlyOwner {
-		vaultThreshold = uint128(_vaultThreshold);
+		vaultThreshold = _vaultThreshold;
 	}
 
 	function setOwner(address newOwner) external onlyOwner {
