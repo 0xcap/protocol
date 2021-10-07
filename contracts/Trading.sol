@@ -6,8 +6,6 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "./interfaces/ITreasury.sol";
 
-// TODO: explicit cast everything
-
 contract Trading {
 
 	// All amounts are stored with 8 decimals
@@ -47,7 +45,7 @@ contract Trading {
 		uint32 productId; // 4 bytes
 		uint64 margin; // 8 bytes
 		uint88 timestamp; // 11 bytes
-		bool isLong; // 1 byte
+		bool isLong; // 1 byte (position's isLong)
 	}
 
 	// Variables
@@ -211,7 +209,7 @@ contract Trading {
 		Product storage product = products[position.productId];
 
 		// Reverse exposure
-		uint256 amount = position.margin * position.leverage / 10**8;
+		uint256 amount = margin * uint256(position.leverage) / 10**8;
 		if (position.isLong) {
 			if (product.openInterestLong >= amount) {
 				product.openInterestLong -= uint64(amount);
@@ -297,9 +295,9 @@ contract Trading {
 
 		// Check if it's a liquidation
 		bool isLiquidation;
-		if (pnlIsNegative && pnl >= position.margin * liquidationThreshold / 10**4) {
-			pnl = position.margin;
-			margin = position.margin;
+		if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
+			pnl = uint256(position.margin);
+			margin = uint256(position.margin);
 			isLiquidation = true;
 		}
 
@@ -487,7 +485,7 @@ contract Trading {
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
-			if (pnlIsNegative && pnl >= uint256(position.margin) * liquidationThreshold / 10**4) {
+			if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
 
 				totalVaultReward += uint256(position.margin);
 
@@ -716,7 +714,7 @@ contract Trading {
 	) external onlyOwner {
 		minMargin = uint64(_minMargin);
 		maxSettlementTime = uint64(_maxSettlementTime);
-		liquidationThreshold = uint16(_liquidationThreshold);
+		liquidationThreshold = uint32(_liquidationThreshold);
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {

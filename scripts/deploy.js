@@ -97,7 +97,7 @@ async function main() {
   await trading.setTreasury(treasury.address);
 
   // Add products
-
+  
   for (const p of products[network]) {
     await trading.addProduct(p.id, [
       p.feed,
@@ -116,7 +116,8 @@ async function main() {
 
   // Oracle setup
 
-  await oracle.setOracle('0x14dc79964da2c08b23698b3d3cc7ca32193d9955'); // account 7 on local node
+  //await oracle.setOracle('0x14dc79964da2c08b23698b3d3cc7ca32193d9955'); // account 7 on local node
+  await oracle.setOracle('0x1192AAE2aB5Bad7c555f45b102Ea68D7A07689A4'); // v2-oracle
   await oracle.setTrading(trading.address);
   await oracle.setTreasury(treasury.address);
 
