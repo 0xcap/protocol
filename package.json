@@ -27,6 +27,7 @@
   "dependencies": {
     "@chainlink/contracts": "^0.2.1",
     "@openzeppelin/contracts": "^4.2.0",
+    "@uniswap/v3-periphery": "^1.2.0",
     "dotenv": "^10.0.0"
   }
 }

@@ -14,7 +14,7 @@ const fromBytes32 = function (string) {
 }
 
 const parseUnits = function (number, units) {
-  return ethers.utils.parseUnits(number, units || 8);
+  return ethers.utils.parseUnits(number, units || 18);
 }
 
 const formatUnits = function (number, units) {
@@ -29,235 +29,24 @@ const products = {
   localhost: [
     {
       id: 1, // ETH-USD
-      feed: '0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419',
+      feed: '0x0000000000000000000000000000000000000000',
       leverage: 50,
-      fee: 0.05,
+      fee: 0.15,
       symbol: 'ETH-USD'
+    },
+    {
+      id: 2, // BTC-USD
+      feed: '0x0000000000000000000000000000000000000000',
+      leverage: 100,
+      fee: 0.15,
+      symbol: 'BTC-USD'
     }
   ],
   rinkeby: [
-    {
-      id: 1, // ETH-USD
-      feed: '0x8A753747A1Fa494EC906cE90E9f37563A8AF630e',
-      leverage: 50,
-      fee: 0.05,
-      symbol: 'ETH-USD'
-    },
-    {
-      id: 2, // BTC-USD
-      feed: '0xECe365B379E1dD183B20fc5f022230C044d51404',
-      leverage: 100,
-      fee: 0.05,
-      symbol: 'BTC-USD'
-    },
-    {
-      id: 3, // LINK-USD
-      feed: '0xd8bD0a1cB028a31AA859A21A3758685a95dE4623',
-      leverage: 30,
-      fee: 0.05,
-      symbol: 'LINK-USD'
-    },
-    {
-      id: 4, // XRP-USD
-      feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
-      leverage: 20,
-      fee: 0.05,
-      symbol: 'XRP-USD'
-    },
-    {
-      id: 5, // XAU-USD
-      feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
-      leverage: 50,
-      fee: 0.02,
-      symbol: 'XAU-USD',
-      longSettle: true
-    },
-    {
-      id: 6, // XAG-USD
-      feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
-      leverage: 50,
-      fee: 0.02,
-      symbol: 'XAG-USD',
-      longSettle: true
-    },
-    {
-      id: 7, // Oil-USD
-      feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
-      leverage: 50,
-      fee: 0.03,
-      symbol: 'Oil-USD',
-      longSettle: true
-    },
-    {
-      id: 8, // EUR-USD
-      feed: '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F',
-      leverage: 200,
-      fee: 0.01,
-      symbol: 'EUR-USD',
-      longSettle: true
-    },
-    {
-      id: 9, // GBP-USD
-      feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
-      leverage: 200,
-      fee: 0.01,
-      symbol: 'GBP-USD',
-      longSettle: true
-    },
-    {
-      id: 10, // JPY-USD
-      feed: '0x3Ae2F46a2D84e3D5590ee6Ee5116B80caF77DeCA',
-      leverage: 200,
-      fee: 0.01,
-      symbol: 'JPY-USD',
-      longSettle: true
-    },
-    {
-      id: 11, // CHF-USD
-      feed: '0x5e601CF5EF284Bcd12decBDa189479413284E1d2',
-      leverage: 200,
-      fee: 0.01,
-      symbol: 'CHF-USD',
-      longSettle: true
-    },
-    {
-      id: 12, // AUD-USD
-      feed: '0x21c095d2aDa464A294956eA058077F14F66535af',
-      leverage: 200,
-      fee: 0.01,
-      symbol: 'AUD-USD',
-      longSettle: true
-    }
   ],
   arbitrum: [
-    {
-      id: 1, // ETH-USD
-      feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
-      leverage: 50,
-      fee: 0.15,
-      symbol: 'ETH-USD'
-    },
-    {
-      id: 2, // BTC-USD
-      feed: '0x6ce185860a4963106506C203335A2910413708e9',
-      leverage: 100,
-      fee: 0.15,
-      symbol: 'BTC-USD'
-    },
-    {
-      id: 3, // LINK-USD
-      feed: '0x86E53CF1B870786351Da77A57575e79CB55812CB',
-      leverage: 30,
-      fee: 0.25,
-      symbol: 'LINK-USD'
-    },
-    //{
-    //  id: 4, // XRP-USD
-    //  feed: '0xc3E76f41CAbA4aB38F00c7255d4df663DA02A024',
-    //  leverage: 20,
-    //  fee: 0.05,
-    //  symbol: 'XRP-USD'
-    //},
-    //{
-    //  id: 5, // XAU-USD
-    //  feed: '0x81570059A0cb83888f1459Ec66Aad1Ac16730243',
-    //  leverage: 50,
-    //  fee: 0.02,
-    //  symbol: 'XAU-USD',
-    //  longSettle: true
-    //},
-    //{
-    //  id: 6, // XAG-USD
-    //  feed: '0x9c1946428f4f159dB4889aA6B218833f467e1BfD',
-    //  leverage: 50,
-    //  fee: 0.02,
-    //  symbol: 'XAG-USD',
-    //  longSettle: true
-    //},
-    //{
-    //  id: 7, // Oil-USD
-    //  feed: '0x6292aA9a6650aE14fbf974E5029f36F95a1848Fd',
-    //  leverage: 50,
-    //  fee: 0.03,
-    //  symbol: 'Oil-USD',
-    //  longSettle: true
-    //},
-    {
-      id: 8, // EUR-USD
-      feed: '0xA14d53bC1F1c0F31B4aA3BD109344E5009051a84',
-      leverage: 200,
-      fee: 0.05,
-      symbol: 'EUR-USD',
-      longSettle: true
-    },
-    //{
-    //  id: 9, // GBP-USD
-    //  feed: '0x7B17A813eEC55515Fb8F49F2ef51502bC54DD40F',
-    //  leverage: 200,
-    //  fee: 0.01,
-    //  symbol: 'GBP-USD',
-    //  longSettle: true
-    //},
-    //{
-    //  id: 10, // JPY-USD
-    //  feed: '0x3Ae2F46a2D84e3D5590ee6Ee5116B80caF77DeCA',
-    //  leverage: 200,
-    //  fee: 0.01,
-    //  symbol: 'JPY-USD',
-    //  longSettle: true
-    //},
-    //{
-    //  id: 11, // CHF-USD
-    //  feed: '0x5e601CF5EF284Bcd12decBDa189479413284E1d2',
-    //  leverage: 200,
-    //  fee: 0.01,
-    //  symbol: 'CHF-USD',
-    //  longSettle: true
-    //},
-    {
-      id: 12, // AUD-USD
-      feed: '0x9854e9a850e7C354c1de177eA953a6b1fba8Fc22',
-      leverage: 100,
-      fee: 0.1,
-      symbol: 'AUD-USD',
-      longSettle: true
-    },
-    {
-      id: 13, // KRW-USD
-      feed: '0x85bb02E0Ae286600d1c68Bb6Ce22Cc998d411916',
-      leverage: 50,
-      fee: 0.1,
-      symbol: 'KRW-USD',
-      longSettle: true
-    },
-    {
-      id: 14, // PHP-USD
-      feed: '0xfF82AAF635645fD0bcc7b619C3F28004cDb58574',
-      leverage: 50,
-      fee: 0.1,
-      symbol: 'PHP-USD',
-      longSettle: true
-    },
-    //{
-    //  id: 15, // CNY-USD
-    //  feed: '0xcC3370Bde6AFE51e1205a5038947b9836371eCCb',
-    //  leverage: 50,
-    //  fee: 0.1,
-    //  symbol: 'CNY-USD',
-    //  longSettle: true
-    //},
   ]
 };
-
-/*
-const chainlink_feeds = { 
-  localhost: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c', '0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6', '0xb49f677943BC038e9857d61E7d053CaA2C1734C1'], // same as mainnet because forked from it. // ETH-USD, BTC-USD, Gold, EUR/USD
-  mainnet: [,'0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419', '0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c'],
-  rinkeby: [,'0x8A753747A1Fa494EC906cE90E9f37563A8AF630e', '0xECe365B379E1dD183B20fc5f022230C044d51404', '0x81570059A0cb83888f1459Ec66Aad1Ac16730243', '0x78F9e60608bF48a1155b4B2A5e31F32318a1d85F'],// ETH-USD, BTC-USD, Gold, EUR/USD
-  arbitrum_rinkeby: [,'0x0c9973e7a27d00e656B9f153348dA46CaD70d03d', '0x5f0423B1a6935dc5596e7A24d98532b67A0AeFd8'],// ETH-USD, BTC-USD
-  arbitrum: [, '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612', '0x6ce185860a4963106506C203335A2910413708e9', null, '0xA14d53bC1F1c0F31B4aA3BD109344E5009051a84']// ETH-USD, BTC-USD, , EUR/USD
-}
-*/
 
 async function main() {
   // Hardhat always runs the compile task when running scripts with its command
@@ -285,64 +74,67 @@ async function main() {
   const Trading = await hre.ethers.getContractFactory("Trading");
   const trading = await Trading.deploy();
   await trading.deployed();
-  console.log("Cap Trading deployed to:", trading.address);
+  console.log("Trading deployed to:", trading.address);
 
-  await trading.updateVault([
-    parseUnits("2"), 
-    0,
-    0,
-    0,
-    0,
-    30 * 24 * 3600, 
-    8 * 3600,
-    15 * 100
-  ]);
-  console.log('Updated vault');
+  const Oracle = await hre.ethers.getContractFactory("Oracle");
+  const oracle = await Oracle.deploy();
+  await oracle.deployed();
+  console.log("Oracle deployed to:", oracle.address);
+
+  const Treasury = await hre.ethers.getContractFactory("Treasury");
+  const treasury = await Treasury.deploy();
+  await treasury.deployed();
+  console.log("Treasury deployed to:", treasury.address);
 
   const network = hre.network.name;
   console.log('network', network);
+
+  // Trading setup
+
+  // Set contract dependencies
+
+  await trading.setOracle(oracle.address);
+  await trading.setTreasury(treasury.address);
+
+  // Add products
   
   for (const p of products[network]) {
     await trading.addProduct(p.id, [
       p.feed,
-      parseUnits(""+p.leverage),
-      p.fee * 100, 
+      parseUnits(""+p.leverage, 8),
+      p.fee * 100,
+      1200,
       true,
-      parseUnits("1000"),
+      parseUnits("1000", 8),
       0,
       0,
-      7 * 100, 
-      p.longSettle ? 72 * 3600 : 2 * 60, 
-      2 * 60, 
-      80 * 100, 
-      5 * 100
+      250, 
+      0
     ]);
     console.log('Added product ' + p.symbol);
   }
 
-  /*
-  const p = products[network][0];
+  // Oracle setup
 
-  console.log('p', p);
+  //await oracle.setOracle('0x14dc79964da2c08b23698b3d3cc7ca32193d9955'); // account 7 on local node
+  await oracle.setOracle('0x1192AAE2aB5Bad7c555f45b102Ea68D7A07689A4'); // v2-oracle
+  await oracle.setTrading(trading.address);
+  await oracle.setTreasury(treasury.address);
 
-  await trading.updateProduct(p.id, [
-    p.feed,
-    parseUnits(""+p.leverage),
-    p.fee * 100, 
-    true,
-    parseUnits("22000"),
-    0,
-    0,
-    6 * 100, 
-    p.longSettle ? 72 * 3600 : 1 * 60, 
-    1 * 60, 
-    83 * 100, 
-    6 * 100
-  ]);
-  console.log('Updated product ' + p.symbol);
-  */
+  // Treasury setup
+
+  await treasury.setTrading(trading.address);
+  await treasury.setOracle(oracle.address);
+
+  await treasury.creditVault({value: parseUnits("20")});
 
   return;
+
+
+
+
+
+
 
   // Below are method tests
 

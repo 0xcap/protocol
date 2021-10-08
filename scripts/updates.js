@@ -35,50 +35,59 @@ async function main() {
         feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
         leverage: 50,
         fee: 0.15,
+        maxExposure: 300,
         symbol: 'ETH-USD'
       },
+      /*
       {
         id: 2, // BTC-USD
         feed: '0x6ce185860a4963106506C203335A2910413708e9',
         leverage: 100,
         fee: 0.15,
+        maxExposure: 300,
         symbol: 'BTC-USD'
       },
       {
         id: 3, // LINK-USD
         feed: '0x86E53CF1B870786351Da77A57575e79CB55812CB',
         leverage: 20,
-        fee: 0.25,
+        fee: 0.5,
+        maxExposure: 100,
         symbol: 'LINK-USD'
       },
       {
         id: 16,
         feed: '0xaD1d5344AaDE45F43E596773Bcc4c423EAbdD034',
-        leverage: 20,
-        fee: 0.25,
+        leverage: 10,
+        fee: 0.75,
+        maxExposure: 100,
         symbol: 'AAVE-USD'
       },
       {
         id: 17,
         feed: '0xb2A8BA74cbca38508BA1632761b56C897060147C',
-        leverage: 20,
-        fee: 0.25,
+        leverage: 10,
+        fee: 0.75,
+        maxExposure: 100,
         symbol: 'SUSHI-USD'
       },
       {
         id: 18,
         feed: '0x9C917083fDb403ab5ADbEC26Ee294f6EcAda2720',
-        leverage: 20,
-        fee: 0.25,
+        leverage: 10,
+        fee: 0.75,
+        maxExposure: 100,
         symbol: 'UNI-USD'
       },
       {
         id: 19,
         feed: '0x745Ab5b69E01E2BE1104Ca84937Bb71f96f5fB21',
         leverage: 10,
-        fee: 0.25,
+        fee: 0.75,
+        maxExposure: 100,
         symbol: 'YFI-USD'
       },
+      */
     ]
   };
 
@@ -120,12 +129,30 @@ async function main() {
   }
 
   const abi = [
+    "function updateVault(tuple(uint96 cap, uint96 balance, uint64 staked, uint80 lastCheckpointBalance, uint80 lastCheckpointTime, uint32 stakingPeriod, uint32 redemptionPeriod, uint32 maxDailyDrawdown))",
     "function addProduct(uint256 productId, tuple(address feed, uint72 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))",
     "function updateProduct(uint256 productId, tuple(address feed, uint72 maxLeverage, uint16 fee, bool isActive, uint64 maxExposure, uint48 openInterestLong, uint48 openInterestShort, uint16 interest, uint32 settlementTime, uint16 minTradeDuration, uint16 liquidationThreshold, uint16 liquidationBounty))"
   ];
   const trading = new hre.ethers.Contract(address, abi, signer);
 
   console.log("Trading address:", trading.address);
+
+
+  /*
+  await trading.updateVault([
+    parseUnits("24"), // 24 ETH
+    0,
+    0,
+    0,
+    0,
+    30 * 24 * 3600, 
+    8 * 3600,
+    20 * 100
+  ]);
+  console.log('Updated vault');
+
+  return;
+  */
 
   /*
   for (const p of products[hre.network.name]) {
@@ -147,20 +174,21 @@ async function main() {
   }
   */
 
+
   for (const p of products[hre.network.name]) {
     await trading.updateProduct(p.id, [
       p.feed,
       parseUnits(""+p.leverage),
-      p.fee * 100, 
+      parseInt(p.fee * 100), 
       true,
-      parseUnits("300"),
+      parseUnits(""+p.maxExposure || "300"),
       0,
       0,
-      8 * 100, 
+      12 * 100, 
       p.longSettle ? 72 * 3600 : 2 * 60, 
       0, 
       80 * 100, 
-      5 * 100
+      0 * 100
     ]);
     console.log('Updated product ' + p.symbol);
   }
