@@ -46,24 +46,24 @@ async function main() {
   //console.log('Treasury addrs', await oracle.owner(), await oracle.trading(), await oracle.oracle());
   //console.log('Products', await trading.getProduct(1), await trading.getProduct(2));
 
-  // const products = {
-  //   arbitrum: [
-  //     {
-  //       id: 1, // ETH-USD
-  //       feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
-  //       leverage: 50,
-  //       fee: 0.25,
-  //       symbol: 'ETH-USD'
-  //     },
-  //     {
-  //       id: 2, // BTC-USD
-  //       feed: '0x6ce185860a4963106506C203335A2910413708e9',
-  //       leverage: 100,
-  //       fee: 0.25,
-  //       symbol: 'BTC-USD'
-  //     }
-  //   ]
-  // };
+  const products = {
+    arbitrum: [
+      {
+        id: 1, // ETH-USD
+        feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
+        leverage: 50,
+        fee: 0.15,
+        symbol: 'ETH-USD'
+      },
+      {
+        id: 2, // BTC-USD
+        feed: '0x6ce185860a4963106506C203335A2910413708e9',
+        leverage: 100,
+        fee: 0.15,
+        symbol: 'BTC-USD'
+      }
+    ]
+  };
 
   // // Add products
   // const network = hre.network.name;
@@ -83,7 +83,28 @@ async function main() {
   //     0
   //   ]);
   //   console.log('Added product ' + p.symbol);
-  // 
+  // }
+
+  // // Update products
+  // const network = hre.network.name;
+  // console.log('network', network);
+
+  // for (const p of products[network]) {
+  //   await trading.updateProduct(p.id, [
+  //     p.feed,
+  //     parseUnits(""+p.leverage, 8),
+  //     p.fee * 100,
+  //     2200,
+  //     true,
+  //     parseUnits("500", 8),
+  //     0,
+  //     0,
+  //     250, 
+  //     0
+  //   ]);
+  //   console.log('Updated product ' + p.symbol);
+  // }
+  
   
   // console.log('Treasury balance1', formatUnits(await provider.getBalance(treasuryAddress)));
   // await treasury.creditVault({value: parseUnits("2")});
@@ -126,6 +147,7 @@ async function main() {
   // console.log('Treasury vault balance 1', formatUnits(await treasury.vaultBalance()));
   // console.log('Treasury vault threshold 1', formatUnits(await treasury.vaultThreshold()));
   // await treasury.setParams(parseUnits("30"));
+  // console.log('Treasury vault threshold 2', formatUnits(await treasury.vaultThreshold()));
   // await treasury.creditVault({value: parseUnits("5")});
   // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
   // console.log('Treasury vault balance 2', formatUnits(await treasury.vaultBalance()));
