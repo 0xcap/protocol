@@ -49,6 +49,8 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
+	// TODO: function to fund treasury with any token without increasing pending rewards
+
 	function creditVault() external override payable {
 		uint256 amount = msg.value;
 		if (amount == 0) return;

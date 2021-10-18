@@ -85,25 +85,25 @@ async function main() {
   //   console.log('Added product ' + p.symbol);
   // }
 
-  // // Update products
-  // const network = hre.network.name;
-  // console.log('network', network);
+  // Update products
+  const network = hre.network.name;
+  console.log('network', network);
 
-  // for (const p of products[network]) {
-  //   await trading.updateProduct(p.id, [
-  //     p.feed,
-  //     parseUnits(""+p.leverage, 8),
-  //     p.fee * 100,
-  //     2200,
-  //     true,
-  //     parseUnits("500", 8),
-  //     0,
-  //     0,
-  //     250, 
-  //     0
-  //   ]);
-  //   console.log('Updated product ' + p.symbol);
-  // }
+  for (const p of products[network]) {
+    await trading.updateProduct(p.id, [
+      p.feed,
+      parseUnits(""+p.leverage, 8),
+      p.fee * 100,
+      1600,
+      true,
+      parseUnits("400", 8),
+      0,
+      0,
+      250, 
+      0
+    ]);
+    console.log('Updated product ' + p.symbol);
+  }
   
   
   // console.log('Treasury balance1', formatUnits(await provider.getBalance(treasuryAddress)));
@@ -152,9 +152,9 @@ async function main() {
   // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
   // console.log('Treasury vault balance 2', formatUnits(await treasury.vaultBalance()));
 
-  // // Fund vault internally
+  // Fund vault internally
   // console.log('Treasury vault balance 1', formatUnits(await treasury.vaultBalance()));
-  // await treasury.fundVault(parseUnits("4"));
+  // await treasury.fundVault(parseUnits("3"));
   // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
   // console.log('Treasury vault balance 2', formatUnits(await treasury.vaultBalance()));
 
