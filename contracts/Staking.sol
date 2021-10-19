@@ -32,9 +32,21 @@ contract Staking is IStaking {
 		owner = msg.sender;
 	}
 
-	
-
 	function stake(address stakingToken, uint256 amount) external {
+		_stake(msg.sender, stakingToken, amount, false);
+	}
+
+	function stakeForAccount(address account, address stakingToken, uint256 amount) external onlyPool {
+		_stake(account, stakingToken, amount, false);
+	}
+
+	function stakeMinted(address account, address stakingToken, uint256 amount) external onlyPool {
+		// just minted stakingToken with amount = amount and sent to this contract
+
+		_stake(account, stakingToken, amount, true);
+	}
+
+	function _stake(address account, address stakingToken, uint256 amount, bool noTransfer) internal {
 
 		require(amount > 0, "!amount");
 		require(stakingTokens[stakingToken], "!stakingToken");
@@ -42,26 +54,34 @@ contract Staking is IStaking {
 		_updateRewards(stakingToken);
 
 		totalSupply[stakingToken] += amount;
-		balances[stakingToken][msg.sender] += amount;
+		balances[stakingToken][account] += amount;
 
-		// Owner needs to approve this contract to spend their CLP
-		IERC20(stakingToken).safeTransferFrom(msg.sender, address(this), amount);
+		if (!noTransfer) {
+			// Owner needs to approve this contract to spend their CLP
+			IERC20(stakingToken).safeTransferFrom(account, address(this), amount);
+		}
 
 	}
 
-	function unstake(address stakingToken, uint256 amount) external {
+	function unstakeForAccount(address account, address stakingToken, uint256 amount, bool noTransfer) external onlyPool {
+		_unstake(account, stakingToken, amount, noTransfer);
+	}
+
+	function _unstake(address account, address stakingToken, uint256 amount, bool noTransfer) internal {
 		
 		require(amount > 0, "!amount");
 		require(stakingTokens[stakingToken], "!stakingToken");
 
 		_updateRewards(stakingToken);
 
-		require(amount <= balances[stakingToken][msg.sender], "!balance");
+		require(amount <= balances[stakingToken][account], "!balance");
 
 		totalSupply[stakingToken] -= amount;
-		balances[stakingToken][msg.sender] -= amount;
+		balances[stakingToken][account] -= amount;
 
-		IERC20(stakingToken).safeTransfer(msg.sender, amount);
+		if (!noTransfer) {
+			IERC20(stakingToken).safeTransfer(account, amount);
+		}
 
 	}
 

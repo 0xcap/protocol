@@ -25,9 +25,17 @@ contract Treasury is ITreasury {
 
 	address[] stakingTokens;
 
+	mapping(address => bool) isStreamingToken;
+
+	mapping(address => uint256) lastDistributionTime; // streamingToken => timestamp
+	mapping(address => uint256) streamRate; // streamingToken => tokens per second
+	mapping(address => uint256) streamTill; // streamingToken => timestamp in seconds when streaming should stop
+
 	mapping(address => uint256) stakingTokenShare; // how much of total bps should go to CLP, CAP, vCAP stakers
 	mapping(address => mapping(address => address)) stakingContracts; // stakingToken => rewardToken => contract
-	uint256 public stakingRewardsBps = 9500; // = 95% of treasury income goes to rewards
+	uint256 public stakingRewardsBps = 7000; // = 70% of treasury income goes to rewards
+
+	// VCAP rewards managed off-chain as marketing campaign based on subgraph
 
 	mapping(address => uint256) lastBalances; // per token
 
@@ -36,7 +44,18 @@ contract Treasury is ITreasury {
 	}
 
 	// Send pending rewards to staking contract
-	function sendPendingRewards(address stakingToken, address token) external onlyStaking(stakingToken, token) returns(uint256) {
+	function sendPendingRewards(address stakingToken, address token) external onlyStaking returns(uint256) {
+
+		bool isStreaming = isStreamingToken[token]; // CAP
+		if (isStreaming) {
+			if (block.timestamp <= streamTill[token]) {
+				uint256 timeDiff = block.timestamp - lastDistributionTime[token];
+				uint256 newPendingReward = streamRate[token] * timeDiff;
+				_notifyFeeReceived(token, newPendingReward);
+				lastDistributionTime[token] = block.timestamp;
+			}
+		}
+
 		IERC20(token).safeTransfer(msg.sender, pendingRewards[stakingToken][token]);
 		pendingRewards[stakingToken][token] = 0;
 	}
@@ -46,6 +65,10 @@ contract Treasury is ITreasury {
 	}
 
 	function notifyFeeReceived(address token, uint256 amount) external onlyTrading {
+		_notifyFeeReceived(token, amount);
+	}
+
+	function _notifyFeeReceived(address token, uint256 amount) internal {
 
 		for (uint256 i = 0; i < stakingTokens.length; i++) {
 			address stakingToken = stakingTokens[i];
@@ -73,7 +96,7 @@ contract Treasury is ITreasury {
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
-		IERC20(token).transfer(destination, amount);
+		IERC20(token).safeTransfer(destination, amount);
 	}
 
 	// Owner methods

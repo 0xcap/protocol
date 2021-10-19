@@ -10,8 +10,7 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-// All user actions should go through here
-// Good for client too as only 1 address required
+// Not needed
 
 contract Router is IRouter {
 
@@ -32,28 +31,8 @@ contract Router is IRouter {
 	}
 
 	function mintAndStakeCLP(address token, uint256 amount) external returns(uint256) {
-
-		require(supportedToken[token], "!token");
-
-		uint256 totalAssetsInUSD = ; // of total assets in the pool
-		uint256 clpSupply = IERC20(clp).totalSupply();
-
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-
-        uint256 amountInUsd = ; // of sent token
-
-        uint256 CLPAmountToMint = totalAssetsInUSD == 0 ? amountInUsd : amountInUsd * clpSupply / totalAssetsInUSD;
-
-        require(CLPAmountToMint >= minCLP, "!minCLP");
-
-        IERC20(clp).mint(msg.sender, CLPAmountToMint);
-
-        lastMinted[msg.sender] = block.timestamp;
-
-        stakeAfterMint(msg.sender, clp, CLPAmountToMint);
-
-        return CLPAmountToMint;
-
+		uint256 CLPAmountToMint = IPool(pool).mintCLPForAccount(msg.sender, token, amount);
+		IStaking(staking).stakeForAccount(msg.sender, clp, CLPAmountToMint);
 	}
 
 	function unstakeAndBurnCLP() {
@@ -91,25 +70,5 @@ contract Router is IRouter {
 	function removeMargin() {}
 
 	function swap() {}
-
-	function _stakeAfterMint(address owner, address stakingToken, uint256 amount) internal onlyPool {
-		_stake(owner, stakingToken, amount);
-	}
-
-	function stake(address stakingToken, uint256 amount) external {
-		_stake(msg.sender, stakingToken, amount);
-	}
-
-	function _stake(address owner, address stakingToken, uint256 amount) internal {
-
-		require(amount > 0, "!amount");
-
-		totalSupply = totalSupply.add(amount);
-		balances[msg.sender] = balances[msg.sender].add(amount);
-
-		// Owner needs to approve Router contract to spend stakingToken
-		IERC20(stakingToken).safeTransferFrom(owner, address(this), amount);
-
-	}
 
 }

@@ -202,8 +202,6 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		// TODO: mint vCAP
-
 		// Check position
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
@@ -220,8 +218,6 @@ contract Trading {
 
 		// Send fee to treasury
 		IERC20(token).safeTransfer(treasury, position.fee);
-
-		// TODO: notify probably not needed. You can keep track of incremental balances in the treasury directly to see how much more fees came in between actions using IERC20.balanceOf at different times to get the diff, e.g. when a user stakes and calls pending rewards
 		ITreasury(treasury).notifyReceived(token, position.fee);
 
 		emit NewPosition(
@@ -743,6 +739,8 @@ contract Trading {
 		return _getChainlinkPrice(product.feed);
 	}
 
+	// TODO: not needed - oracle can use nextPositionId with getPositions to get latest positions
+	
 	// gets latest positions and close orders that need to be settled
 	function getOrdersToSettle(uint256 limit) external view returns(
 		uint256[] memory _positionIds,
