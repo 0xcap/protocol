@@ -10,7 +10,10 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-contract Pool is IPool {
+// All user actions should go through here
+// Good for client too as only 1 address required
+
+contract Router is IRouter {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -47,9 +50,65 @@ contract Pool is IPool {
 
         lastMinted[msg.sender] = block.timestamp;
 
-        IStaking(staking).stakeAfterMint(msg.sender, clp, CLPAmountToMint);
+        stakeAfterMint(msg.sender, clp, CLPAmountToMint);
 
         return CLPAmountToMint;
+
+	}
+
+	function unstakeAndBurnCLP() {
+		// sends back user collateral and burns associated CLP, including staked
+	}
+
+	function stakeCAP() {
+
+	}
+
+	function unstakeCAP() {
+		
+	}
+
+	// these are automatically done from trading contract
+	function mintAndStakeVCAP() {}
+	function unstakeAndBurnVCAP() {}
+
+
+
+	function collectRewards(address stakingToken) {
+
+	}
+
+	function compoundRewards() {}
+
+
+
+	function submitNewOrder() {}
+
+	function submitCloseOrder() {}
+
+	function addMargin() {}
+	
+	function removeMargin() {}
+
+	function swap() {}
+
+	function _stakeAfterMint(address owner, address stakingToken, uint256 amount) internal onlyPool {
+		_stake(owner, stakingToken, amount);
+	}
+
+	function stake(address stakingToken, uint256 amount) external {
+		_stake(msg.sender, stakingToken, amount);
+	}
+
+	function _stake(address owner, address stakingToken, uint256 amount) internal {
+
+		require(amount > 0, "!amount");
+
+		totalSupply = totalSupply.add(amount);
+		balances[msg.sender] = balances[msg.sender].add(amount);
+
+		// Owner needs to approve Router contract to spend stakingToken
+		IERC20(stakingToken).safeTransferFrom(owner, address(this), amount);
 
 	}
 

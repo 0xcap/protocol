@@ -3,91 +3,69 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
-import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
-import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
-// Treasury with methods to use revenue to push the Cap ecosystem forward through buybacks, dividends, etc. This contract can be upgraded any time, simply point to the new one in the Trading contract
-
-interface IUniswapRouter is ISwapRouter {
-    function refundETH() external payable;
-}
-
 contract Treasury is ITreasury {
+
+	using SafeERC20 for IERC20; 
+    using Address for address payable;
 
 	// Contract dependencies
 	address public owner;
 	address public trading;
 	address public oracle;
+	address public pool;
+	address public staking;
+	address public weth;
 
-	// Uniswap arbitrum addresses
-	IUniswapRouter public constant uniswapRouter = IUniswapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-	//address public constant CAP = 0x031d35296154279dc1984dcd93e392b1f946737b;
+	address[] stakingTokens;
 
-	// Arbitrum
-	address public constant WETH9 = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+	mapping(address => uint256) stakingTokenShare; // how much of total bps should go to CLP, CAP, vCAP stakers
+	mapping(address => mapping(address => address)) stakingContracts; // stakingToken => rewardToken => contract
+	uint256 public stakingRewardsBps = 9500; // = 95% of treasury income goes to rewards
 
-	// Treasury can sell assets, hedge, support Cap ecosystem, etc.
-
-	uint256 public vaultBalance;
-	uint256 public vaultThreshold = 10 ether;
-
-	// Events
-
-	event Swap(
-		uint256 amount,
-	    uint256 amountOut,
-	    uint256 amountOutMinimum,
-	    address tokenIn,
-	    address tokenOut,
-	    uint24 poolFee
-	);
+	mapping(address => uint256) lastBalances; // per token
 
 	constructor() {
 		owner = msg.sender;
 	}
 
-	// TODO: function to fund treasury with any token without increasing pending rewards
+	// Send pending rewards to staking contract
+	function sendPendingRewards(address stakingToken, address token) external onlyStaking(stakingToken, token) returns(uint256) {
+		IERC20(token).safeTransfer(msg.sender, pendingRewards[stakingToken][token]);
+		pendingRewards[stakingToken][token] = 0;
+	}
 
-	function creditVault() external override payable {
-		uint256 amount = msg.value;
-		if (amount == 0) return;
-		if (vaultBalance + amount > vaultThreshold) {
-			vaultBalance = vaultThreshold;
-		} else {
-			vaultBalance += amount;
+	function getPendingRewards(address stakingToken, address token) external view returns(uint256) {
+		return pendingRewards[stakingToken][token];
+	}
+
+	function notifyFeeReceived(address token, uint256 amount) external onlyTrading {
+
+		for (uint256 i = 0; i < stakingTokens.length; i++) {
+			address stakingToken = stakingTokens[i];
+			uint256 share = stakingTokenShare[stakingToken]; // in bps out of total stakingRewardsBps
+			pendingRewards[stakingToken][token] += amount * stakingRewardsBps * share / 10**8;
 		}
+
 	}
 
-	function debitVault(address destination, uint256 amount) external override onlyTrading {
-		if (amount == 0) return;
-		require(amount <= vaultBalance, "!vault-insufficient");
-		vaultBalance -= amount;
-		payable(destination).transfer(amount);
-	}
-
-	// Move funds to vault internally
-	function fundVault(uint256 amount) external onlyOwner {
-		require(amount < address(this).balance - vaultBalance, "!insufficient");
-		vaultBalance += amount;
+	// Can be used right after sending a token to fund treasury without increasing pending rewards
+	function updateLastBalance(address token) external onlyOwner {
+		lastBalances[token] = IERC20(token).balanceOf(address(this));
 	}
 
 	function fundOracle(
 		address destination, 
 		uint256 amount
 	) external override onlyOracle {
-		if (amount > address(this).balance - vaultBalance) return;
-		payable(destination).transfer(amount);
-	}
-
-	function sendETH(
-		address destination, 
-		uint256 amount
-	) external onlyOwner {
-		require(amount < address(this).balance - vaultBalance, "!insufficient");
-		payable(destination).transfer(amount);
+		IWETH(weth).withdraw(amount);
+		payable(destination).sendValue(amount);
 	}
 
 	function sendToken(
@@ -97,56 +75,6 @@ contract Treasury is ITreasury {
 	) external onlyOwner {
 		IERC20(token).transfer(destination, amount);
 	}
-
-	function swap(
-		address tokenIn,
-		address tokenOut,
-		uint256 amountIn, 
-		uint256 amountOutMinimum,
-		uint24 poolFee
-	) external onlyOwner {
-
-		if (tokenIn == WETH9) {
-			require(amountIn < address(this).balance - vaultBalance, "!insufficient");
-		}
-
-        // Approve the router to spend tokenIn
-        TransferHelper.safeApprove(tokenIn, address(uniswapRouter), amountIn);
-
-		ISwapRouter.ExactInputSingleParams memory params =
-	        ISwapRouter.ExactInputSingleParams({
-	            tokenIn: tokenIn,
-	            tokenOut: tokenOut,
-	            fee: poolFee,
-	            recipient: msg.sender,
-	            deadline: block.timestamp,
-	            amountIn: amountIn,
-	            amountOutMinimum: amountOutMinimum,
-	            sqrtPriceLimitX96: 0
-	        });
-
-	    uint256 amountOut;
-
-	    if (tokenIn == WETH9) {
-	    	amountOut = uniswapRouter.exactInputSingle{value: amountIn}(params);
-	    } else {
-	    	amountOut = uniswapRouter.exactInputSingle(params);
-	    }
-
-	    emit Swap(
-	    	amountIn,
-	    	amountOut,
-	    	amountOutMinimum,
-	    	tokenIn,
-	    	tokenOut,
-	    	poolFee
-	    );
-
-	}
-
-	fallback() external payable {}
-
-	receive() external payable {}
 
 	// Owner methods
 
