@@ -25,7 +25,7 @@ contract Rewards is IRewards {
 	mapping(address => mapping(address => uint256)) private balances;
 	mapping(address => uint256) private totalSupply; // stakingToken => amount staked
 
-	uint256 public rewardPerTokenStored;
+	uint256 public cumulativeRewardPerTokenStored;
 
 	mapping(address => uint256) private claimableReward;
 	mapping(address => uint256) private previousRewardPerToken;
@@ -42,15 +42,15 @@ contract Rewards is IRewards {
 
 		if (supply == 0) return;
 
-		rewardPerTokenStored += rewardAmount / supply;
+		cumulativeRewardPerTokenStored += rewardAmount / supply;
 
-		if (rewardPerTokenStored == 0) return; // no rewards yet
+		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
 		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(stakingToken, account);
 
-		claimableReward[account] += accountStakedBalance * (rewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
+		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 
-		previousRewardPerToken[account] = rewardPerTokenStored;
+		previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
 
 	}
 
@@ -76,7 +76,7 @@ contract Rewards is IRewards {
 
 		if (supply == 0) return 0;
 
-		uint256 _rewardPerTokenStored = rewardPerTokenStored + pendingRewardAmount / supply;
+		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingRewardAmount / supply;
 
 		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
 

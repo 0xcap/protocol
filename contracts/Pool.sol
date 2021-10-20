@@ -37,7 +37,46 @@ contract Pool is IPool {
 		IERC20(token).safeTransfer(destination, amount);
 	}
 
-	// TODO: target weights for each collateral token, swap method, fees for minting/burning CLP based on weights
+	function swap(address tokenIn, uint256 amountIn, address tokenOut, address destination) external {
+
+		// TODO: validate tokens
+
+		require(amountIn > 0, "!amountIn");
+
+		uint256 amountOut = amountIn * tokenInPrice / tokenOutPrice;
+
+		// get token weights with +amountIn and -amountOut in the pool
+
+		uint256 tokenInBalance = IERC20(tokenIn).balanceOf(address(this));
+		uint256 tokenOutBalance = IERC20(tokenOut).balanceOf(address(this));
+
+		require(amountOut <= tokenOutBalance, "!amountOut");
+
+		uint256 totalAssetsInUSD = getAUMAfterSwap(tokenIn, amountIn, tokenOut, amountOut);
+
+		uint256 tokenInWeight = tokenInBalance * tokenPriceInUSD / totalAssetsInUSD; // normalized in usd with amountIn
+		uint256 tokenInWeightAfter = (tokenInBalance + amountIn) * tokenPriceInUSD / totalAssetsInUSD; // normalized in usd with amountIn
+		
+		uint256 tokenOutWeight = tokenOutBalance * tokenPriceInUSD / totalAssetsInUSD; // normalized in usd with amountIn
+		uint256 tokenOutWeightAfter = (tokenOutBalance - amountOut) * tokenPriceInUSD / totalAssetsInUSD; // normalized in usd with amountIn
+
+		uint256 targetInWeight = targetWeights[tokenIn];
+		uint256 targetOutWeight = targetWeights[tokenOut];
+
+		if (
+			tokenInWeight <= targetInWeight && tokenInWeightAfter >= tokenInWeight && tokenInWeightAfter <= targetInWeight ||
+			tokenInWeight >= targetInWeight && tokenInWeightAfter <= tokenInWeight && tokenInWeightAfter >= targetInWeight ||
+			tokenOutWeight >= targetOutWeight && tokenOutWeightAfter <= tokenOutWeight && tokenOutWeightAfter >= targetOutWeight ||
+			tokenOutWeight <= targetOutWeight && tokenOutWeightAfter >= tokenOutWeight && tokenOutWeightAfter <= targetOutWeight
+		) {
+			// Allow swap because it helps rebalance in the right direction
+			IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+			IERC20(tokenOut).safeTransfer(msg.sender, amountOut);
+		} else {
+			revert("!swap");
+		}
+
+	}
 
 	// TODO: calculate AUM in USD
 

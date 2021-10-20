@@ -323,8 +323,6 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		// TODO: mint vCAP
-
 		// Check order and params
 		Order memory _closeOrder = closeOrders[orderId];
 		uint256 margin = _closeOrder.margin;
@@ -740,7 +738,7 @@ contract Trading {
 	}
 
 	// TODO: not needed - oracle can use nextPositionId with getPositions to get latest positions
-	
+
 	// gets latest positions and close orders that need to be settled
 	function getOrdersToSettle(uint256 limit) external view returns(
 		uint256[] memory _positionIds,
