@@ -96,7 +96,7 @@ async function main() {
       p.fee * 100,
       1600,
       true,
-      parseUnits("400", 8),
+      parseUnits("750", 8),
       0,
       0,
       250, 

@@ -10,6 +10,8 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
+// TODO: set a maxDaily drawdown for pool. This protects from drainage in black swan scenarios like wrong price feeds, insider manipulation, even from chainlink. Max exposure per product have been removed.
+
 contract Pool is IPool {
 
 	using SafeERC20 for IERC20; 

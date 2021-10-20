@@ -56,8 +56,11 @@ contract Treasury is ITreasury {
 			}
 		}
 
-		IERC20(token).safeTransfer(msg.sender, pendingRewards[stakingToken][token]);
+		uint256 reward = pendingRewards[stakingToken][token];
+		IERC20(token).safeTransfer(msg.sender, reward);
 		pendingRewards[stakingToken][token] = 0;
+
+		return reward;
 	}
 
 	function getPendingRewards(address stakingToken, address token) external view returns(uint256) {

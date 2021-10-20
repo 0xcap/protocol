@@ -30,6 +30,8 @@ contract Oracle is IOracle {
 		owner = msg.sender;
 	}
 
+	// TODO: dark oracle network needs to be cognizant of settlement times. Too large since position is created, should cancel it
+
 	function settleOrders(
 		uint256[] calldata positionIds,
 		uint256[] calldata positionPrices,
