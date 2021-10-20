@@ -32,12 +32,9 @@ contract Staking is IStaking {
 		owner = msg.sender;
 	}
 
+	// For CAP
 	function stake(address stakingToken, uint256 amount) external {
 		_stake(msg.sender, stakingToken, amount, false);
-	}
-
-	function stakeForAccount(address account, address stakingToken, uint256 amount) external onlyPool {
-		_stake(account, stakingToken, amount, false);
 	}
 
 	function stakeMinted(address account, address stakingToken, uint256 amount) external onlyPool {
@@ -61,6 +58,11 @@ contract Staking is IStaking {
 			IERC20(stakingToken).safeTransferFrom(account, address(this), amount);
 		}
 
+	}
+
+	// For CAP
+	function unstake(address stakingToken, uint256 amount) external {
+		_unstake(msg.sender, stakingToken, amount, false);
 	}
 
 	function unstakeForAccount(address account, address stakingToken, uint256 amount, bool noTransfer) external onlyPool {

@@ -20,6 +20,11 @@ contract Pool is IPool {
 	address public clp;
 	address public staking;
 
+	uint256 public standardFee = 15; // 0.15%
+    uint256 public maxFee = 500; // 5%
+
+	mapping(address => uint256) targetWeights; // in bps
+
 	mapping(address => uint256) lastMinted;
 
 	uint256 public cooldownPeriod; // min staking time
@@ -32,11 +37,39 @@ contract Pool is IPool {
 		IERC20(token).safeTransfer(destination, amount);
 	}
 
-	function mintCLPForAccount(address account, address token, uint256 amount) external onlyRouter {
-		_mintCLP(account, token, amount);
+	// TODO: target weights for each collateral token, swap method, fees for minting/burning CLP based on weights
+
+	// TODO: calculate AUM in USD
+
+	function getMintingFee(address token, uint256 amount) public view returns(uint256) {
+		// increases supply of token in pool
+		uint256 tokenBalance = IERC20(token).balanceOf(address(this));
+		uint256 tokenWeight = (tokenBalance + amount) * tokenPriceInUSD / totalAssetsInUSDWithAmount; // normalized in usd, including addition of amount
+		uint256 targetWeight = targetWeights[token];
+
+		if (tokenWeight >= targetWeight) {
+			// fee applies. doubling = maxfee
+			// TODO: review formula
+			return amount * maxFee * (tokenWeight / targetWeight) / 2*10**4;
+		} else {
+			return 0;
+		}
 	}
 
-	// TODO: weights for each collateral token, swap method, fees for minting/burning CLP based on weights
+	function getBurningFee(address token, uint256 amount) public view returns(uint256) {
+		// reduces supply of token in pool
+		uint256 tokenBalance = IERC20(token).balanceOf(address(this));
+		uint256 tokenWeight = (tokenBalance - amount) * tokenPriceInUSD / totalAssetsInUSDWithAmount; // normalized in usd, including addition of amount
+		uint256 targetWeight = targetWeights[token];
+
+		if (tokenWeight <= targetWeight) {
+			// fee applies. doubling = maxfee
+			// TODO: review formula
+			return amount * maxFee * (tokenWeight / targetWeight) / 2*10**4;
+		} else {
+			return 0;
+		}
+	}
 
 	function mintAndStakeCLP(address account, address token, uint256 amount) external returns(uint256) {
 
@@ -47,6 +80,13 @@ contract Pool is IPool {
 
 		// !! Pool needs approval to spend from account
         IERC20(token).safeTransferFrom(account, address(this), amount);
+
+        uint256 amountAfterFees = amount - getMintingFee(token, amount);
+        uint256 fees = amount - amountAfterFees;
+
+        // Send fee to treasury
+		IERC20(token).safeTransfer(treasury, fees);
+		ITreasury(treasury).notifyFeeReceived(token, fees);
 
         uint256 amountInUsd = ; // of sent token
 
@@ -71,7 +111,7 @@ contract Pool is IPool {
 		require(lastMinted[account] > block.timestamp + cooldownPeriod, "!cooldown");
 
 		// Unstakes CLP and keeps them in the staking contract
-		IStaking(staking).unstakeForAccount(account, clp, amount, address(this));
+		IStaking(staking).unstakeForAccount(account, clp, amount, false);
 
 		// Token is the token user will get back (weth, usdc, etc)
 
@@ -83,13 +123,20 @@ contract Pool is IPool {
 
 		uint256 tokenAmount = amountInUSD / tokenPriceInUSD; // get price with chainlink
 
+        uint256 amountAfterFees = tokenAmount - getBurningFee(token, tokenAmount);
+        uint256 fees = tokenAmount - amountAfterFees;
+
+        // Send fee to treasury
+		IERC20(token).safeTransfer(treasury, fees);
+		ITreasury(treasury).notifyFeeReceived(token, fees);
+
 		// burn directly in the staking contract. Pool can do this as minter role
-		IMintableToken(clp).burn(staking, CLPAmountToBurn);
+		IMintableToken(clp).burn(staking, amount);
 
 		// transfer token out
-		IERC20(token).safeTransfer(account, tokenAmount);
+		IERC20(token).safeTransfer(account, amountAfterFees);
 
-		return tokenAmount;
+		return amountAfterFees;
 		
 	}
 
