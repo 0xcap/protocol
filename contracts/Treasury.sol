@@ -33,6 +33,15 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
+	function setRouter(address _router) onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external {
+		oracle = IRouter(router).oracleContract();
+		trading = IRouter(router).tradingContract();
+	}
+
 	function notifyFeeReceived(
 		address user,
 		address currency, 

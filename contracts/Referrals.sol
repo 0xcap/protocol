@@ -41,6 +41,12 @@ contract Referrals is IReferrals {
 		balances[msg.sender][currency] = 0;
 		IERC20(currency).safeTransfer(msg.sender, amount);
 	}
+
+	function setReferrer(address referredUser, address referrer) {
+		if (referredBy[referredUser] == address(0)) {
+			referredBy[referredUser] = referrer;
+		}
+	}
 	
 	function sendToken(
 		address token, 

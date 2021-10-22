@@ -66,7 +66,6 @@ contract Trading {
 	address public owner; 
 	address public weth;
 	address public treasury;
-	address public pool;
 	address public oracle;
 
 	// 32 bytes
@@ -78,6 +77,8 @@ contract Trading {
 	mapping(uint256 => Position) private positions;
 	mapping(uint256 => Order) private closeOrders;
 
+	mapping(address => uint256) minMargins; // currency => amount
+	mapping(address => uint256) marginPerCurrency; // for pool utilization
 
 	// Events
 	event NewPosition(
@@ -127,6 +128,17 @@ contract Trading {
 		owner = msg.sender;
 	}
 
+	function setRouter(address _router) onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external {
+		treasury = IRouter(router).treasuryContract();
+		oracle = IRouter(router).oracleContract();
+		weth = IRouter(router).wethContract();
+		referrals = IRouter(router).referralsContract();
+	}
+
 	// Methods
 
 	// Submit new position (price pending)
@@ -135,10 +147,14 @@ contract Trading {
 		uint256 productId,
 		uint256 margin,
 		uint256 leverage,
-		bool isLong
+		bool isLong,
+		address referrer
 	) external payable {
 
-		// TODO: Have referrer field in submit new order, set it only once, can't refer yourself
+		// Set referrer
+		if (referrer != address(0) && referrer != msg.sender) {
+			IReferrals(referrals).setReferrer(msg.sender, referrer);
+		}
 
 		// Check params
 		require(leverage >= 10**8, "!leverage");
@@ -202,7 +218,7 @@ contract Trading {
 		Product memory product = products[position.productId];
 
 		// Validate price
-		price = _validatePrice(product.feed, product.fee, price);
+		price = _validatePrice(product.feed, product.oracleMaxDeviation, price);
 
 		// Set position price
 		position.price = uint64(price);
@@ -212,6 +228,8 @@ contract Trading {
 		uint256 feeAmount = position.fee * 10**10;
 		IERC20(currency).safeTransfer(treasury, feeAmount);
 		ITreasury(treasury).notifyFeeReceived(currency, feeAmount);
+
+		marginPerCurrency[position.currency] += position.margin;
 
 		emit NewPosition(
 			positionId,
@@ -327,7 +345,7 @@ contract Trading {
 
 		Product storage product = products[position.productId];
 		
-		price = _validatePrice(product.feed, product.fee, price);
+		price = _validatePrice(product.feed, product.oracleMaxDeviation, price);
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
@@ -340,6 +358,12 @@ contract Trading {
 		}
 
 		position.margin -= uint64(margin);
+
+		if (margin > marginPerCurrency[position.currency]) {
+			marginPerCurrency[position.currency] = 0;
+		} else {
+			marginPerCurrency[position.currency] -= margin;
+		}
 
 		// Send fee to treasury
 		address currency = position.currency;
@@ -449,7 +473,13 @@ contract Trading {
 			margin += position.fee;
 		}
 
-		IERC20(position.currency).safeTransfer(positionOwner, margin);
+		if (margin > marginPerCurrency[position.currency]) {
+			marginPerCurrency[position.currency] = 0;
+		} else {
+			marginPerCurrency[position.currency] -= margin;
+		}
+
+		IERC20(position.currency).safeTransfer(positionOwner, margin * 10**10);
 
 		delete positions[positionId];
 
@@ -487,6 +517,8 @@ contract Trading {
 		position.margin = uint64(newMargin);
 		position.leverage = uint64(newLeverage);
 
+		marginPerCurrency[currency] += newMargin;
+
 		emit AddMargin(
 			positionId, 
 			position.owner, 
@@ -514,13 +546,11 @@ contract Trading {
 
 			Product storage product = products[position.productId];
 
-			// TODO: chainlink should be fallback to dark oracle price not other way around
+			uint256 price = _validatePrice(product.feed, product.oracleMaxDeviation, prices[i]);
 
-			// Attempt to get chainlink price
-			uint256 price = _getChainlinkPrice(product.feed);
-
+			// Chainlink fallback
 			if (price == 0) {
-				price = prices[i];
+				price = _getChainlinkPrice(product.feed);
 				if (price == 0) {
 					continue;
 				}
@@ -531,6 +561,12 @@ contract Trading {
 			if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4) {
 
 				IERC20(position.currency).safeTransfer(treasury, position.margin * 10**10);
+
+				if (position.margin > marginPerCurrency[position.currency]) {
+					marginPerCurrency[position.currency] = 0;
+				} else {
+					marginPerCurrency[position.currency] -= position.margin;
+				}
 
 				emit ClosePosition(
 					positionId, 
@@ -563,9 +599,7 @@ contract Trading {
 		address currency,
 		uint256 margin
 	) internal {
-		uint256 currencyPriceInUSD = IPool(pool).getCurrencyPrice(currency);
-		uint256 marginInUSD = margin * currencyPriceInUSD / 10**8;
-		require(marginInUSD >= minMarginInUSD, "!min-margin");
+		require(margin >= minMargins[currency], "!min-margin");
 	}
 
 	function _validatePrice(
@@ -638,6 +672,10 @@ contract Trading {
 	}
 
 	// Getters
+
+	function getMarginPerCurrency(address currency) external view returns(uint256) {
+		return marginPerCurrency[currency];
+	}
 
 	function getProduct(uint256 productId) external view returns(Product memory) {
 		return products[productId];

@@ -68,7 +68,7 @@ contract Rewards is IRewards {
 
 	}
 
-	function getClaimableReward() external view returns(uint256) {
+	function getClaimableRewards() external view returns(uint256) {
 
 		uint256 currentClaimableReward = claimableReward[msg.sender];
 

@@ -41,6 +41,23 @@ contract Router is IRouter {
 		IPool(poolContracts[currency]).creditUserProfit(user, amount);
 	}
 
+	/*
+	List of actions
+	user
+	- submit new order
+	- add margin
+	- close position
+	- stake currency for CLP (mint)
+	- unstake CLP for currency (burn)
+	- collect rewards for CLP-currency
+	- collect rewards for CAP-currency
+	- stake CAP
+	- unstake CAP
+
+	internal
+	- getters for the contract addresses
+	*/
+
 	// Owner methods
 
 	function setOwner(address newOwner) external onlyOwner {

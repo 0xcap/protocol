@@ -10,51 +10,53 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-contract StakingCLP is IStaking {
+// For CAP
+
+contract StakingCAP is IStaking {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
 
 	address public owner;
-	address public pool;
+	address public trading;
 
-	address public rewards; // contract
+	address public cap; // CAP address
+
+	address[] rewardsContracts; // supported reward contracts
 
 	mapping(address => uint256) private balances; // account => amount staked
 	uint256 public totalSupply;
-
-	mapping(address => uint256) lastStakedCLP;
-	uint256 public minCLPStakingTime;
-
 
 	constructor() {
 		owner = msg.sender;
 	}
 
-	function stake(address account, uint256 amount) external onlyPool {
-		
-		// just minted CLP with amount = amount and sent to this contract
-		require(amount > 0, "!amount");
-		lastStakedCLP[account] = block.timestamp;
+	function stake(uint256 amount) internal {
 
-		IRewards(rewards).updateRewards(msg.sender);
+		require(amount > 0, "!amount");
+
+		_updateRewards();
 
 		totalSupply += amount;
-		balances[account] += amount;
+		balances[msg.sender] += amount;
+
+		// Owner needs to approve this contract to spend their CLP
+		IERC20(cap).safeTransferFrom(msg.sender, address(this), amount);
 
 	}
 
-	function unstake(address account, uint256 amount) external onlyPool {
-
-		require(lastStakedCLP[msg.sender] > block.timestamp + minStakingTime, "!cooldown");
+	function unstake(uint256 amount) internal {
+		
 		require(amount > 0, "!amount");
 
-		IRewards(rewards).updateRewards(msg.sender);
+		_updateRewards();
 
-		require(amount <= balances[account], "!balance");
+		require(amount <= balances[msg.sender], "!balance");
 
 		totalSupply -= amount;
-		balances[account] -= amount;
+		balances[msg.sender] -= amount;
+
+		IERC20(cap).safeTransfer(msg.sender, amount);
 
 	}
 
@@ -63,7 +65,13 @@ contract StakingCLP is IStaking {
 	}
 
 	function getStakedBalance(address account) external {
-		return balances[msg.sender];
+		return balances[account];
+	}
+
+	function _updateRewards() internal {
+		for (uint256 i = 0; i < rewardsContracts.length; i++) {
+			IRewards(rewardsContracts[i]).updateRewards(msg.sender);
+		}
 	}
 
 }

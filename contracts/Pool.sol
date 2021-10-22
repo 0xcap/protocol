@@ -12,8 +12,6 @@ import "./libraries/Price.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-// TODO: utlization ratio
-
 contract Pool is IPool {
 
 	using SafeERC20 for IERC20; 
@@ -22,15 +20,26 @@ contract Pool is IPool {
 	address public owner;
 	address public trading;
 	address public clp;
-	address public staking;
 
 	uint256 public withdrawFee = 15; // 0.15%
 
     address public currency;
 
+    uint256 public utilizationMultiplier; // in bps
+
     uint256 public maxDailyDrawdown = 3000; // 30%
     uint256 public checkpointBalance;
     uint256 public checkpointTimestamp;
+
+    // Staking
+
+    address public rewards; // contract
+
+    mapping(address => uint256) private balances; // account => amount staked
+    uint256 public clpSupply;
+
+    mapping(address => uint256) lastStaked;
+    uint256 public minStakingTime;
 
 	constructor() {
 		owner = msg.sender;
@@ -57,10 +66,14 @@ contract Pool is IPool {
 
 	}
 
+	function getUtlization() external view returns(uint256) {
+		uint256 activeMargin = ITrading(trading).getMarginPerCurrency(currency);
+		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		return activeMargin * utilizationMultiplier / currentBalance; // in bps
+	}
+
 	function mintAndStakeCLP(uint256 amount) external returns(uint256) {
 
-		address clp = IStaking(staking).clp();
-		uint256 clpSupply = IERC20().totalSupply();
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
 
 		// Pool needs approval to spend from sender
@@ -68,10 +81,9 @@ contract Pool is IPool {
 
         uint256 CLPAmountToMint = currentBalance == 0 ? amount : amount * clpSupply / currentBalance;
 
-        // mint directly to the CLP staking contract
-        IMintableToken(clp).mint(staking, CLPAmountToMint);
-
-        IStaking(staking).stake(msg.sender, CLPAmountToMint);
+        // mint CLP
+        IMintableToken(clp).mint(address(this), CLPAmountToMint);
+        _stake(CLPAmountToMint);
 
         return CLPAmountToMint;
 
@@ -81,24 +93,57 @@ contract Pool is IPool {
 
 		require(amount > 0, "!amount");
 
-		// Unstakes CLP and keeps them in the staking contract
-		IStaking(staking).unstake(msg.sender, amount);
+		_unstake(amount);
 
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-		uint256 clpSupply = IERC20(clp).totalSupply();
 
 		// Amount of currency (weth, usdc, etc) to send user
 		uint256 amountToSend = amount * currentBalance / clpSupply;
         uint256 amountAfterFee = amountToSend * (10**4 - withdrawFee);
 
-		// burn directly in the staking contract. Pool can do this as minter role
-		IMintableToken(clp).burn(staking, amount);
+		// burn CLP
+		IMintableToken(clp).burn(address(this), amount);
 
 		// transfer token out
 		IERC20(currency).safeTransfer(msg.sender, amountAfterFee);
 
 		return amountAfterFee;
 		
+	}
+
+	function _stake(uint256 amount) internal {
+		
+		// just minted CLP with amount = amount and sent to this contract
+		require(amount > 0, "!amount");
+		lastStaked[msg.sender] = block.timestamp;
+
+		IRewards(rewards).updateRewards(msg.sender);
+
+		clpSupply += amount;
+		balances[msg.sender] += amount;
+
+	}
+
+	function unstake(uint256 amount) internal {
+
+		require(lastStaked[msg.sender] > block.timestamp + minStakingTime, "!cooldown");
+		require(amount > 0, "!amount");
+
+		IRewards(rewards).updateRewards(msg.sender);
+
+		require(amount <= balances[msg.sender], "!balance");
+
+		clpSupply -= amount;
+		balances[msg.sender] -= amount;
+
+	}
+
+	function getStakedSupply() external {
+		return clpSupply;
+	}
+
+	function getStakedBalance(address account) external {
+		return balances[account];
 	}
 
 }
