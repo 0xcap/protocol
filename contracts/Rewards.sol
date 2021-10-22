@@ -18,15 +18,9 @@ contract Rewards is IRewards {
     using Address for address payable;
 
 	address public staking;
-
-	address stakingToken;
-	address rewardToken;
-
-	mapping(address => mapping(address => uint256)) private balances;
-	mapping(address => uint256) private totalSupply; // stakingToken => amount staked
+	address public rewardToken;
 
 	uint256 public cumulativeRewardPerTokenStored;
-
 	uint256 public pendingReward;
 
 	mapping(address => uint256) private claimableReward;
@@ -40,9 +34,9 @@ contract Rewards is IRewards {
 		pendingReward += amount;
 	}
 
-	function updateRewards(address account) external {
+	function updateRewards(address account) public {
 
-		uint256 supply = IStaking(staking).getStakedSupply(stakingToken);
+		uint256 supply = IStaking(staking).getStakedSupply();
 
 		if (supply == 0) return;
 
@@ -50,7 +44,7 @@ contract Rewards is IRewards {
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
-		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(stakingToken, account);
+		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(account);
 
 		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 
@@ -60,23 +54,25 @@ contract Rewards is IRewards {
 
 	}
 
-	function sendReward(address account) external onlyStaking {
+	function collectRewards() external {
 
-		uint256 rewardToSend = claimableReward[account];
-		claimableReward[account] = 0;
+		updateRewards(msg.sender);
+
+		uint256 rewardToSend = claimableReward[msg.sender];
+		claimableReward[msg.sender] = 0;
 
 		if (rewardToSend > 0) {
-			IERC20(rewardToken).safeTransfer(account, rewardToSend);
-			emit ClaimedReward(account, stakingToken, rewardToken, rewardToSend);
+			IERC20(rewardToken).safeTransfer(msg.sender, rewardToSend);
+			emit ClaimedReward(msg.sender, rewardToken, rewardToSend);
 		}
 
 	}
 
-	function getClaimableReward(address account) external view returns(uint256) {
+	function getClaimableReward() external view returns(uint256) {
 
-		uint256 currentClaimableReward = claimableReward[account];
+		uint256 currentClaimableReward = claimableReward[msg.sender];
 
-		uint256 supply = IStaking(staking).getStakedSupply(stakingToken);
+		uint256 supply = IStaking(staking).getStakedSupply();
 
 		if (supply == 0) return 0;
 
@@ -84,9 +80,9 @@ contract Rewards is IRewards {
 
 		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
 
-		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(stakingToken, account);
+		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(msg.sender);
 
-		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
+		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
 		
 	}
 

@@ -29,12 +29,6 @@ contract Treasury is ITreasury {
 	mapping(address => uint256) private referrerShare; // currency => bps
 	mapping(address => uint256) private referredShare; // currency => bps
 
-	mapping(address => address) private clpRewardsContracts; // currency (eth, usdc, etc.) => contract
-	mapping(address => address) private capRewardsContracts; // currency (eth, usdc, etc.) => contract
-
-	address public rebates; // contract
-	address public referrals; // contract
-
 	constructor() {
 		owner = msg.sender;
 	}
@@ -44,6 +38,12 @@ contract Treasury is ITreasury {
 		address currency, 
 		uint256 amount
 	) external onlyTrading {
+
+		// Contracts from Router
+		address clpRewardsContract = IRouter(router).getClpRewardsContract(currency);
+		address capRewardsContract = IRouter(router).getCapRewardsContract(currency);
+		address rebatesContract = IRouter(router).rebatesContract();
+		address referralsContract = IRouter(router).referralsContract();
 
 		// Send clpShare[currency] * amount to clp-currency rewards contract
 		uint256 clpReward = clpShare[currency] * amount / 10**4;
@@ -59,16 +59,16 @@ contract Treasury is ITreasury {
 
 		// Send standardRebateShare to rebates contract
 		uint256 standardRebate = standardRebateShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(rebates, standardRebate);
-		IRebates(rebates).notifyRebateReceived(user, currency, standardRebate);
+		IERC20(currency).safeTransfer(rebatesContract, standardRebate);
+		IRebates(rebatesContract).notifyRebateReceived(user, currency, standardRebate);
 
 		// Send referrerShare, referredShare to referrals contract
-		address referredBy = IReferrals(referrals).referrerOf(user);
+		address referredBy = IReferrals(referralsContract).referrerOf(user);
 		if (referredBy != address(0)) {
 			uint256 referrerReward = referrerShare[currency] * amount / 10**4;
 			uint256 referredReward = referredShare[currency] * amount / 10**4;
-			IERC20(currency).safeTransfer(referrals, referrerReward + referredReward);
-			IReferrals(referrals).notifyRewardReceived(user, currency, referredReward, referrerReward);
+			IERC20(currency).safeTransfer(referralsContract, referrerReward + referredReward);
+			IReferrals(referralsContract).notifyRewardReceived(user, currency, referredReward, referrerReward);
 		}
 
 	}
