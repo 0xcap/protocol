@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./libraries/Price.sol";
+
 import "./interfaces/ITreasury.sol";
+
+// keep everything in one contract
 
 contract Trading {
 
@@ -16,6 +20,8 @@ contract Trading {
     using Address for address payable;
 
 	// Structs
+
+	// TODO: review bytes
 
 	struct Product {
 		// 32 bytes
@@ -33,13 +39,11 @@ contract Trading {
 		// 32 bytes
 		uint32 closeOrderId; // 4 bytes
 		uint16 productId; // 2 bytes
-		uint16 collateralId; // 2 bytes
 		uint64 leverage; // 8 bytes
 		uint64 price; // 8 bytes
 		uint64 margin; // 8 bytes
 
-		// 16 bytes
-		uint64 marginInUSD; // 8 bytes
+		address currency; // weth, usdc, etc.
 		uint64 fee; // 8 bytes
 
 		// 32 bytes
@@ -51,7 +55,6 @@ contract Trading {
 	struct Order {
 		uint64 positionId; // 8 bytes
 		uint16 productId; // 2 bytes
-		uint16 collateralId; // 2 bytes
 		uint64 margin; // 8 bytes
 		uint64 fee; // 8 bytes
 		uint88 timestamp; // 11 bytes
@@ -100,11 +103,13 @@ contract Trading {
 		address indexed user, 
 		uint256 indexed productId, 
 		bool indexed isFullClose, 
+		uint256 collateralId,
 		bool isLong,
 		uint256 price, 
 		uint256 entryPrice, 
 		uint256 margin, 
 		uint256 leverage, 
+		uint256 fee, 
 		uint256 pnl, 
 		bool pnlIsNegative, 
 		bool wasLiquidated
@@ -126,24 +131,25 @@ contract Trading {
 
 	// Submit new position (price pending)
 	function submitNewPosition(
-		uint256 collateralId,
+		address currency,
 		uint256 productId,
 		uint256 margin,
 		uint256 leverage,
 		bool isLong
 	) external payable {
 
+		// TODO: Have referrer field in submit new order, set it only once, can't refer yourself
+
 		// Check params
 		require(leverage >= 10**8, "!leverage");
+		require(currency != address(0), "!currency");
 
-		if (collateralId == 1) { // User is sending ETH
+		if (currency == weth) { // User is sending ETH
 			require(msg.value > 0, "!margin");
 			margin = msg.value;
-			IWETH(weth).deposit{value: margin}();
+			IWETH(currency).deposit{value: margin}();
 		} else {
-			address collateralToken = IPool.getTokenAddress(collateralId);
-			require(collateralToken != address(0), "!collateral");
-			IERC20(collateralToken).safeTransferFrom(msg.sender, address(this), margin);
+			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin);
 		}
 
 		require(margin > 0, "!margin");
@@ -154,7 +160,7 @@ contract Trading {
 
 		uint256 netMargin = margin * (1 - product.fee / 10**6);
 
-		_checkMinMargin(collateralId, netMargin);
+		_checkMinMargin(currency, netMargin);
 
 		uint256 fee = margin - netMargin;
 
@@ -164,7 +170,7 @@ contract Trading {
 			closeOrderId: 0,
 			owner: msg.sender,
 			productId: uint16(productId),
-			collateralId: uint16(collateralId),
+			currency: currency,
 			leverage: uint64(leverage / 10**10),
 			price: 0,
 			margin: uint64(netMargin / 10**10),
@@ -177,7 +183,7 @@ contract Trading {
 			nextPositionId,
 			msg.sender,
 			productId,
-			collateralId
+			currency
 		);
 
 	}
@@ -196,22 +202,22 @@ contract Trading {
 		Product memory product = products[position.productId];
 
 		// Validate price
-		price = _validatePrice(product, price, position.isLong);
+		price = _validatePrice(product.feed, product.fee, price);
 
 		// Set position price
 		position.price = uint64(price);
 
 		// Send fee to treasury
-		address collateralToken = IPool.getTokenAddress(position.collateralId);
+		address currency = position.currency;
 		uint256 feeAmount = position.fee * 10**10;
-		IERC20(collateralToken).safeTransfer(treasury, feeAmount);
-		ITreasury(treasury).notifyFeeReceived(collateralToken, feeAmount);
+		IERC20(currency).safeTransfer(treasury, feeAmount);
+		ITreasury(treasury).notifyFeeReceived(currency, feeAmount);
 
 		emit NewPosition(
 			positionId,
 			position.owner,
 			position.productId,
-			position.tokenId,
+			position.currency,
 			position.isLong,
 			price,
 			position.margin,
@@ -236,17 +242,19 @@ contract Trading {
 			msg.sender != positionOwner && msg.sender != oracle
 		) return;
 
+		uint256 currency = position.currency;
+		uint256 fee = position.fee;
+
 		delete positions[positionId];
 
 		// Refund margin + fee
-		uint256 marginPlusFee = (position.margin + position.fee) * 10**10;
-		if (position.collateralId == 1) { // WETH
+		uint256 marginPlusFee = (margin + fee) * 10**10;
+		if (currency == weth) { // WETH
 			// Unwrap and send
-			IWETH(weth).withdraw(marginPlusFee);
+			IWETH(currency).withdraw(marginPlusFee);
 			payable(positionOwner).sendValue(marginPlusFee);
 		} else {
-			address collateralToken = IPool.getTokenAddress(position.collateralId);
-			IERC20(collateralToken).safeTransfer(positionOwner, marginPlusFee);
+			IERC20(currency).safeTransfer(positionOwner, marginPlusFee);
 		}
 
 	}
@@ -268,17 +276,17 @@ contract Trading {
 
 		Product memory product = products[position.productId];
 
-		uint256 collateralId = position.collateralId;
+		uint256 currency = position.currency;
 
-		_checkMinMargin(collateralId, margin);
+		_checkMinMargin(currency, margin);
 
 		uint256 fee = margin * product.fee / 10**6;
 
-		if (collateralId == 1) {
+		if (currency == weth) {
 			require(msg.value >= fee, "!fee");
+			IWETH(currency).deposit{value: msg.value}();
 		} else {
-			address collateralToken = IPool.getTokenAddress(collateralId);
-			IERC20(collateralToken).safeTransferFrom(msg.sender, address(this), fee);
+			IERC20(currency).safeTransferFrom(msg.sender, address(this), fee);
 		}
 
 		nextCloseOrderId++;
@@ -306,8 +314,6 @@ contract Trading {
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!margin");
 
-		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
-
 		uint256 positionId = _closeOrder.positionId;
 
 		Position storage position = positions[positionId];
@@ -321,13 +327,13 @@ contract Trading {
 
 		Product storage product = products[position.productId];
 		
-		price = _validatePrice(product, price, !position.isLong);
+		price = _validatePrice(product.feed, product.fee, price);
 
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
 		// Check if it's a liquidation
 		bool isLiquidation;
-		if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
+		if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4) {
 			pnl = uint256(position.margin);
 			margin = uint256(position.margin);
 			isLiquidation = true;
@@ -336,7 +342,9 @@ contract Trading {
 		position.margin -= uint64(margin);
 
 		// Send fee to treasury
-		IERC20(token).safeTransfer(treasury, _closeOrder.fee);
+		address currency = position.currency;
+		IERC20(currency).safeTransfer(treasury, _closeOrder.fee * 10**10);
+		// todo: notify fee received
 
 		address positionOwner = position.owner;
 
@@ -345,11 +353,13 @@ contract Trading {
 			positionOwner, 
 			position.productId, 
 			position.margin == 0,
+			position.collateralId, 
 			position.isLong,
 			price, 
 			position.price,
 			margin, 
 			position.leverage, 
+			_closeOrder.fee,
 			pnl, 
 			pnlIsNegative, 
 			isLiquidation
@@ -364,13 +374,13 @@ contract Trading {
 		delete closeOrders[orderId];
 
 		if (pnlIsNegative) {
-			IERC20(token).safeTransfer(pool, pnl);
+			IERC20(currency).safeTransfer(pool, pnl * 10**10);
 			if (pnl < margin) {
-				IERC20(token).safeTransfer(positionOwner, margin - pnl);
+				IERC20(currency).safeTransfer(positionOwner, (margin - pnl) * 10**10);
 			}
 		} else {
-			IERC20(token).safeTransfer(positionOwner, margin);
-			IPool(pool).creditUserProfit(positionOwner, token, pnl);
+			IERC20(currency).safeTransfer(positionOwner, margin * 10**10);
+			IPool(pool).creditUserProfit(positionOwner, currency, pnl * 10**10);
 		}
 
 	}
@@ -388,11 +398,23 @@ contract Trading {
 		
 		position.closeOrderId = 0;
 
+		uint256 fee = _closeOrder.fee;
+
 		delete closeOrders[orderId];
+
+		// Refund fee
+		address currency = position.currency;
+		if (currency == weth) { // WETH
+			// Unwrap and send
+			IWETH(currency).withdraw(fee);
+			payable(position.owner).sendValue(fee);
+		} else {
+			IERC20(currency).safeTransfer(position.owner, fee);
+		}
 
 	}
 
-	function releaseMargin(uint256 positionId) external onlyOwner {
+	function releaseMargin(uint256 positionId, bool includeFee) external onlyOwner {
 
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
@@ -402,32 +424,18 @@ contract Trading {
 		uint256 margin = position.margin;
 		address positionOwner = position.owner;
 
-		uint256 amount = margin * uint256(position.leverage) / 10**8;
-		// Set exposure
-		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint64(amount);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= uint64(amount);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
 		emit ClosePosition(
 			positionId, 
 			positionOwner, 
 			position.productId, 
 			true,
+			position.collateralId, 
 			position.isLong,
 			position.price, 
 			position.price,
 			margin, 
 			position.leverage, 
+			position.fee, 
 			0, 
 			false, 
 			false
@@ -437,7 +445,11 @@ contract Trading {
 			delete closeOrders[position.closeOrderId];
 		}
 
-		IERC20(token).safeTransfer(positionOwner, margin);
+		if (includeFee) {
+			margin += position.fee;
+		}
+
+		IERC20(position.currency).safeTransfer(positionOwner, margin);
 
 		delete positions[positionId];
 
@@ -455,17 +467,20 @@ contract Trading {
 		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
 
-		if (position.token == weth) {
+		uint256 currency = position.currency;
+
+		if (currency == weth) { // User is sending ETH
+			require(msg.value > 0, "!margin");
 			margin = msg.value;
+			IWETH(currency).deposit{value: margin}();
 		} else {
-			IERC20(position.token).safeTransferFrom(msg.sender, address(this), margin);
+			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin);
 		}
 
-		// Check params
-		require(margin >= minMargin, "!margin");
+		_checkMinMargin(currency, margin);
 
 		// New position params
-		uint256 newMargin = position.margin + margin;
+		uint256 newMargin = position.margin + margin / 10**10;
 		uint256 newLeverage = position.leverage * position.margin / newMargin;
 		require(newLeverage >= 10**8, "!low-leverage");
 
@@ -475,44 +490,7 @@ contract Trading {
 		emit AddMargin(
 			positionId, 
 			position.owner, 
-			margin, 
-			newMargin, 
-			newLeverage
-		);
-
-	}
-
-	// Remove margin
-	function removeMargin(
-		uint256 positionId,
-		uint256 margin
-	) external {
-
-		// Check params
-		require(margin >= minMargin, "!margin");
-
-		// Check position
-		Position storage position = positions[positionId];
-		require(msg.sender == position.owner, "!owner");
-		require(position.price > 0, "!opening");
-		require(position.closeOrderId == 0, "!closing");
-
-		require(position.margin > margin, "!position-margin");
-
-		// New position params
-		uint256 newMargin = position.margin - margin;
-		uint256 newLeverage = position.leverage * position.margin / newMargin;
-		
-		require(newLeverage >= 10**8, "!low-leverage");
-		require(newLeverage <= product.maxLeverage, "!high-leverage");
-
-		position.margin = uint64(newMargin);
-		position.leverage = uint64(newLeverage);
-
-		emit RemoveMargin(
-			positionId, 
-			position.owner, 
-			margin, 
+			margin / 10**10, 
 			newMargin, 
 			newLeverage
 		);
@@ -536,6 +514,8 @@ contract Trading {
 
 			Product storage product = products[position.productId];
 
+			// TODO: chainlink should be fallback to dark oracle price not other way around
+
 			// Attempt to get chainlink price
 			uint256 price = _getChainlinkPrice(product.feed);
 
@@ -548,35 +528,22 @@ contract Trading {
 
 			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
 
-			if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
+			if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4) {
 
-				IERC20(position.token).safeTransfer(treasury, position.margin);
-
-				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
-				if (position.isLong) {
-					if (product.openInterestLong >= amount) {
-						product.openInterestLong -= uint64(amount);
-					} else {
-						product.openInterestLong = 0;
-					}
-				} else {
-					if (product.openInterestShort >= amount) {
-						product.openInterestShort -= uint64(amount);
-					} else {
-						product.openInterestShort = 0;
-					}
-				}
+				IERC20(position.currency).safeTransfer(treasury, position.margin * 10**10);
 
 				emit ClosePosition(
 					positionId, 
 					position.owner, 
 					position.productId, 
 					true,
+					position.collateralId,
 					position.isLong,
 					price, 
 					position.price,
 					position.margin, 
 					position.leverage, 
+					position.fee,
 					position.margin,
 					true,
 					true
@@ -593,21 +560,21 @@ contract Trading {
 	// Internal methods
 
 	function _checkMinMargin(
-		uint256 collateralId,
+		address currency,
 		uint256 margin
 	) internal {
-		uint256 collateralTokenPriceInUSD = IPool.getTokenPrice(collateralId);
-		uint256 marginInUSD = margin * collateralTokenPriceInUSD / 10**8;
+		uint256 currencyPriceInUSD = IPool(pool).getCurrencyPrice(currency);
+		uint256 marginInUSD = margin * currencyPriceInUSD / 10**8;
 		require(marginInUSD >= minMarginInUSD, "!min-margin");
 	}
 
 	function _validatePrice(
-		Product memory product,
-		uint256 price,
-		bool isLong
+		address feed,
+		uint256 oracleMaxDeviation,
+		uint256 price
 	) internal view returns(uint256) {
 
-		uint256 chainlinkPrice = _getChainlinkPrice(product.feed);
+		uint256 chainlinkPrice = Price.get(feed);
 
 		if (chainlinkPrice == 0) {
 			require(price > 0, "!price");
@@ -617,44 +584,13 @@ contract Trading {
 		// Bound check oracle price against chainlink price
 		if (
 			price == 0 ||
-			price > chainlinkPrice + chainlinkPrice * product.oracleMaxDeviation / 10**4 ||
-			price < chainlinkPrice - chainlinkPrice * product.oracleMaxDeviation / 10**4
+			price > chainlinkPrice + chainlinkPrice * oracleMaxDeviation / 10**4 ||
+			price < chainlinkPrice - chainlinkPrice * oracleMaxDeviation / 10**4
 		) {
-			if (isLong) {
-				return chainlinkPrice + chainlinkPrice * product.fee / 10**4;
-			} else {
-				return chainlinkPrice - chainlinkPrice * product.fee / 10**4;
-			}
+			return chainlinkPrice;
 		}
 
 		return price;
-
-	}
-
-	function _getChainlinkPrice(address feed) internal view returns (uint256) {
-
-		if (feed == address(0)) return 0;
-
-		(
-			, 
-            int price,
-            ,
-            uint timeStamp,
-            
-		) = AggregatorV3Interface(feed).latestRoundData();
-
-		if (price <= 0 || timeStamp == 0) return 0;
-
-		uint8 decimals = AggregatorV3Interface(feed).decimals();
-
-		uint256 feedPrice;
-		if (decimals != 8) {
-			feedPrice = uint256(price) * 10**8 / 10**decimals;
-		} else {
-			feedPrice = uint256(price);
-		}
-
-		return feedPrice;
 
 	}
 	
@@ -703,56 +639,6 @@ contract Trading {
 
 	// Getters
 
-	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
-		Product memory product = products[productId];
-		return _getChainlinkPrice(product.feed);
-	}
-
-	// TODO: not needed - oracle can use nextPositionId with getPositions to get latest positions
-
-	// gets latest positions and close orders that need to be settled
-	function getOrdersToSettle(uint256 limit) external view returns(
-		uint256[] memory _positionIds,
-		Position[] memory _positions,
-		uint256[] memory _orderIds,
-		Order[] memory _orders
-	) {
-
-		require(limit > 0 && limit <= 300, "!limit");
-
-		_positionIds = new uint256[](limit);
-		_positions = new Position[](limit);
-		_orderIds = new uint256[](limit);
-		_orders = new Order[](limit);
-
-		uint256 until1 = nextPositionId >= limit ? nextPositionId - limit : 0;
-		uint256 j = 0;
-		for (uint256 i = nextPositionId; i > until1; i--) {
-			Position memory position = positions[i];
-			if (position.price == 0 && position.margin > 0) {
-				_positionIds[j] = i;
-				_positions[j] = position;
-			}
-			j++;
-		}
-
-		uint256 until2 = nextCloseOrderId >= limit ? nextCloseOrderId - limit : 0;
-		uint256 k = 0;
-		for (uint256 i = nextCloseOrderId; i > until2; i--) {
-			_orderIds[k] = i;
-			_orders[k] = closeOrders[i];
-			k++;
-		}
-
-		return (
-			_positionIds,
-			_positions,
-			_orderIds,
-			_orders
-		);
-
-	}
-
 	function getProduct(uint256 productId) external view returns(Product memory) {
 		return products[productId];
 	}
@@ -766,7 +652,7 @@ contract Trading {
 		return _positions;
 	}
 
-	function getOrders(uint256[] calldata orderIds) external view returns(Order[] memory _orders) {
+	function getCloseOrders(uint256[] calldata orderIds) external view returns(Order[] memory _orders) {
 		uint256 length = orderIds.length;
 		_orders = new Order[](length);
 		for (uint256 i=0; i < length; i++) {
@@ -777,14 +663,24 @@ contract Trading {
 
 	// Governance methods
 
-	function updateParams(
-		uint256 _minMargin,
-		uint256 _maxSettlementTime,
-		uint256 _liquidationThreshold
+	function setParams(
+		uint256 _minMarginInUSD
 	) external onlyOwner {
-		minMargin = uint64(_minMargin);
-		maxSettlementTime = uint64(_maxSettlementTime);
-		liquidationThreshold = uint32(_liquidationThreshold);
+		minMarginInUSD = _minMarginInUSD;
+	}
+
+	function setContracts(
+		uint256 _treasury,
+		uint256 _oracle,
+		uint256 _pool
+	) external onlyOwner {
+		treasury = _treasury;
+		oracle = _oracle;
+		pool = _pool;
+	}
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
 	}
 
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
@@ -793,8 +689,6 @@ contract Trading {
 		require(product.maxLeverage == 0, "!product-exists");
 
 		require(_product.maxLeverage >= 10**8, "!max-leverage");
-		require(_product.maxExposure > 0, "!max-exposure");
-		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 
 		products[productId] = Product({
 			feed: _product.feed,
@@ -802,11 +696,7 @@ contract Trading {
 			fee: _product.fee,
 			interest: _product.interest,
 			isActive: true,
-			maxExposure: _product.maxExposure,
-			openInterestLong: 0,
-			openInterestShort: 0,
-			oracleMaxDeviation: _product.oracleMaxDeviation,
-			minTradeDuration: _product.minTradeDuration
+			oracleMaxDeviation: _product.oracleMaxDeviation
 		});
 
 	}
@@ -817,7 +707,6 @@ contract Trading {
 		require(product.maxLeverage > 0, "!product-does-not-exist");
 
 		require(_product.maxLeverage >= 10**8, "!max-leverage");
-		require(_product.maxExposure > 0, "!max-exposure");
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
 
 		product.feed = _product.feed;
@@ -825,22 +714,8 @@ contract Trading {
 		product.fee = _product.fee;
 		product.interest = _product.interest;
 		product.isActive = _product.isActive;
-		product.maxExposure = _product.maxExposure;
 		product.oracleMaxDeviation = _product.oracleMaxDeviation;
-		product.minTradeDuration = _product.minTradeDuration;
 	
-	}
-
-	function setTreasury(address _treasury) external onlyOwner {
-		treasury = _treasury;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
 	}
 
 	modifier onlyOracle() {

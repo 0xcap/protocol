@@ -12,6 +12,10 @@ import "./interfaces/ITrading.sol";
 
 // keeps track of staked balances for users (not rewards) across all staking tokens
 
+// Staking for CLP (single reward) and CAP (multi reward)
+
+// TODO: Keep same code (multi reward) even for single reward contracts. Update to have 1 staking token per contract set in constructor
+
 contract Staking is IStaking {
 
 	using SafeERC20 for IERC20; 
@@ -19,8 +23,10 @@ contract Staking is IStaking {
 
 	address public owner;
 	address public trading;
-	address public clp;
 	address public staking;
+
+	address public clp;
+	address public cap;
 
 	mapping(address => bool) stakingTokens; // address => true
 	mapping (address => address[]) rewardTokens; // staking token => supported reward tokens
@@ -28,22 +34,30 @@ contract Staking is IStaking {
 	mapping(address => mapping(address => uint256)) private balances; // stakingToken => account => amount staked
 	mapping(address => uint256) private totalSupply; // stakingToken => amount staked
 
+	mapping(address => uint256) lastStakedCLP;
+
+	uint256 public minCLPStakingTime;
+
 	constructor() {
 		owner = msg.sender;
 	}
 
-	// For CAP
-	function stake(address stakingToken, uint256 amount) external {
+	function stakeCAP(address stakingToken, uint256 amount) external {
 		_stake(msg.sender, stakingToken, amount, false);
 	}
 
-	function stakeMinted(address account, address stakingToken, uint256 amount) external onlyPool {
-		// just minted stakingToken with amount = amount and sent to this contract
-
-		_stake(account, stakingToken, amount, true);
+	function stakeCLP(address account, uint256 amount) external onlyPool {
+		// just minted CLP with amount = amount and sent to this contract
+		lastStakedCLP[account] = block.timestamp;
+		_stake(account, clp, amount, false);
 	}
 
-	function _stake(address account, address stakingToken, uint256 amount, bool noTransfer) internal {
+	function unstakeCLP(address account, uint256 amount) external onlyPool {
+		require(lastStakedCLP[msg.sender] > block.timestamp + minCLPStakingTime, "!cooldown");
+		_unstake(account, clp, amount, false);
+	}
+
+	function _stake(address account, address stakingToken, uint256 amount, bool transferOut) internal {
 
 		require(amount > 0, "!amount");
 		require(stakingTokens[stakingToken], "!stakingToken");
@@ -53,26 +67,20 @@ contract Staking is IStaking {
 		totalSupply[stakingToken] += amount;
 		balances[stakingToken][account] += amount;
 
-		if (!noTransfer) {
+		if (transferOut) {
 			// Owner needs to approve this contract to spend their CLP
 			IERC20(stakingToken).safeTransferFrom(account, address(this), amount);
 		}
 
 	}
 
-	// For CAP
-	function unstake(address stakingToken, uint256 amount) external {
+	function unstakeCAP(address stakingToken, uint256 amount) external {
 		_unstake(msg.sender, stakingToken, amount, false);
 	}
 
-	function unstakeForAccount(address account, address stakingToken, uint256 amount, bool noTransfer) external onlyPool {
-		_unstake(account, stakingToken, amount, noTransfer);
-	}
-
-	function _unstake(address account, address stakingToken, uint256 amount, bool noTransfer) internal {
+	function _unstake(address account, address stakingToken, uint256 amount, bool transferOut) internal {
 		
 		require(amount > 0, "!amount");
-		require(stakingTokens[stakingToken], "!stakingToken");
 
 		_updateRewards(stakingToken);
 
@@ -81,7 +89,7 @@ contract Staking is IStaking {
 		totalSupply[stakingToken] -= amount;
 		balances[stakingToken][account] -= amount;
 
-		if (!noTransfer) {
+		if (transferOut) {
 			IERC20(stakingToken).safeTransfer(account, amount);
 		}
 

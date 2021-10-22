@@ -27,6 +27,8 @@ contract Rewards is IRewards {
 
 	uint256 public cumulativeRewardPerTokenStored;
 
+	uint256 public pendingReward;
+
 	mapping(address => uint256) private claimableReward;
 	mapping(address => uint256) private previousRewardPerToken;
 
@@ -34,15 +36,17 @@ contract Rewards is IRewards {
 		owner = msg.sender;
 	}
 
-	function updateRewards(address account) external {
+	function notifyRewardReceived(uint256 amount) external onlyTreasury {
+		pendingReward += amount;
+	}
 
-		uint256 rewardAmount = ITreasury(treasury).sendPendingRewards(stakingToken, rewardToken);
+	function updateRewards(address account) external {
 
 		uint256 supply = IStaking(staking).getStakedSupply(stakingToken);
 
 		if (supply == 0) return;
 
-		cumulativeRewardPerTokenStored += rewardAmount / supply;
+		cumulativeRewardPerTokenStored += pendingReward / supply;
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
@@ -51,6 +55,8 @@ contract Rewards is IRewards {
 		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 
 		previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
+
+		pendingReward = 0;
 
 	}
 
@@ -70,13 +76,11 @@ contract Rewards is IRewards {
 
 		uint256 currentClaimableReward = claimableReward[account];
 
-		uint256 pendingRewardAmount = ITreasury(treasury).getPendingRewards(stakingToken, rewardToken);
-
 		uint256 supply = IStaking(staking).getStakedSupply(stakingToken);
 
 		if (supply == 0) return 0;
 
-		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingRewardAmount / supply;
+		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingReward / supply;
 
 		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
 
@@ -85,6 +89,5 @@ contract Rewards is IRewards {
 		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 		
 	}
-
 
 }
