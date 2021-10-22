@@ -10,28 +10,37 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-// For CAP
+// For CAP only
 
-contract StakingCAP is IStaking {
+contract Staking is IStaking {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
 
 	address public owner;
-	address public trading;
+	address public router;
 
 	address public cap; // CAP address
-
-	address[] rewardsContracts; // supported reward contracts
 
 	mapping(address => uint256) private balances; // account => amount staked
 	uint256 public totalSupply;
 
-	constructor() {
+	constructor(address _cap) {
 		owner = msg.sender;
+		cap = _cap;
 	}
 
-	function stake(uint256 amount) internal {
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) external onlyOwner {
+		router = _router;
+	}
+
+	function stake(uint256 amount) external {
 
 		require(amount > 0, "!amount");
 
@@ -45,7 +54,7 @@ contract StakingCAP is IStaking {
 
 	}
 
-	function unstake(uint256 amount) internal {
+	function unstake(uint256 amount) external {
 		
 		require(amount > 0, "!amount");
 
@@ -69,8 +78,11 @@ contract StakingCAP is IStaking {
 	}
 
 	function _updateRewards() internal {
-		for (uint256 i = 0; i < rewardsContracts.length; i++) {
-			IRewards(rewardsContracts[i]).updateRewards(msg.sender);
+		uint256 length = IRouter(router).currenciesLength();
+		for (uint256 i = 0; i < length; i++) {
+			address currency = IRouter(router).currencies(i);
+			address rewardsContract = IRouter(router).getCapRewardsContract(currency);
+			IRewards(rewardsContract).updateRewards(msg.sender);
 		}
 	}
 

@@ -15,17 +15,30 @@ contract Rebates is IRebates {
 
 	// Contract dependencies
 	address public owner;
-	address public trading;
-	address public oracle;
-	address public pool;
-	address public staking;
-	address public weth;
+	address public router;
+	address public treasury;
 
 	mapping(address => mapping(address => uint256)) private balances; // user => currency => amount
 
 	constructor() {
 		owner = msg.sender;
 	}
+
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external onlyOwner {
+		treasury = IRouter(router).treasuryContract();
+	}
+
+	// Methods
 
 	function notifyRebateReceived(address user, address currency, uint256 amount) external onlyTreasury {
 		balances[user][currency] += amount;
@@ -38,26 +51,6 @@ contract Rebates is IRebates {
 		IERC20(currency).safeTransfer(msg.sender, amount);
 	}
 
-	// Owner methods
-
-	function setParams(
-		uint256 _vaultThreshold
-	) external onlyOwner {
-		vaultThreshold = _vaultThreshold;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-	}
-
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
 	// Modifiers
 
 	modifier onlyOwner() {
@@ -65,13 +58,8 @@ contract Rebates is IRebates {
 		_;
 	}
 
-	modifier onlyTrading() {
-		require(msg.sender == trading, "!trading");
-		_;
-	}
-
-	modifier onlyOracle() {
-		require(msg.sender == oracle, "!oracle");
+	modifier onlyTreasury() {
+		require(msg.sender == treasury, "!treasury");
 		_;
 	}
 

@@ -8,13 +8,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/ITrading.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IReferrals.sol";
 
 // keep everything in one contract
 
-contract Trading {
+contract Trading is ITrading {
 
 	using SafeERC20 for IERC20;
     using Address for address payable;
@@ -140,7 +141,7 @@ contract Trading {
 		router = _router;
 	}
 
-	function setContracts() external {
+	function setContracts() external onlyOwner {
 		treasury = IRouter(router).treasuryContract();
 		oracle = IRouter(router).oracleContract();
 		weth = IRouter(router).wethContract();

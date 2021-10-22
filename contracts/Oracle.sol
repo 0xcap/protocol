@@ -11,8 +11,8 @@ contract Oracle is IOracle {
 
 	// Contract dependencies
 	address public owner;
-	address public trading;
-	address public oracle;
+	address public router;
+	address public darkOracle;
 	address public treasury;
 
 	// Variables
@@ -30,6 +30,31 @@ contract Oracle is IOracle {
 		owner = msg.sender;
 	}
 
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external onlyOwner {
+		treasury = IRouter(router).treasuryContract();
+		darkOracle = IRouter(router).darkOracleAddress();
+	}
+
+	function setParams(
+		uint256 _requestsPerFunding, 
+		uint256 _costPerRequest
+	) external onlyOwner {
+		requestsPerFunding = _requestsPerFunding;
+		costPerRequest = _costPerRequest;
+	}
+
+	// Methods
+
 	// TODO: dark oracle network needs to be cognizant of settlement times. Too large since position is created, should cancel it
 
 	function settleOrders(
@@ -37,7 +62,7 @@ contract Oracle is IOracle {
 		uint256[] calldata positionPrices,
 		uint256[] calldata orderIds,
 		uint256[] calldata orderPrices
-	) external onlyOracle {
+	) external onlyDarkOracle {
 
 		if (positionIds.length > 0) {
 
@@ -92,7 +117,7 @@ contract Oracle is IOracle {
 	function liquidatePositions(
 		uint256[] calldata positionIds,
 		uint256[] calldata _prices
-	) external onlyOracle {
+	) external onlyDarkOracle {
 		ITrading(trading).liquidatePositions(positionIds, _prices);
 		_tallyOracleRequests(positionIds.length);
 	}
@@ -104,32 +129,6 @@ contract Oracle is IOracle {
 			requestsSinceFunding = 0;
 			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
 		}
-	}
-
-	// Owner methods
-
-	function setParams(
-		uint256 _requestsPerFunding, 
-		uint256 _costPerRequest
-	) external onlyOwner {
-		requestsPerFunding = _requestsPerFunding;
-		costPerRequest = _costPerRequest;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-	}
-
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
-	function setTreasury(address _treasury) external onlyOwner {
-		treasury = _treasury;
 	}
 
 	// Modifiers

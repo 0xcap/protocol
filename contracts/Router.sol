@@ -23,15 +23,21 @@ contract Router is IRouter {
 	address public staking;
 	address public weth;
 
+	address[] public currencies;
+
 	mapping(address => address) poolContracts; // currency => contract
-	mapping(address => address) clpStakingContracts; // currency => contract
-	mapping(address => address) clpRewardsContracts; // currency => contract
+	mapping(address => address) poolRewardsContracts; // currency => contract
 	mapping(address => address) capRewardsContracts; // currency => contract
 	
 	address public tradingContract;
 	address public capStakingContract;
 	address public rebatesContract;
 	address public referralsContract;
+	address public oracleContract;
+	address public wethContract;
+	address public clpContract;
+	address public treasuryContract;
+	address public darkOracleAddress;
 
 	constructor() {
 		owner = msg.sender;
@@ -40,6 +46,18 @@ contract Router is IRouter {
 	function isSupportedCurrency(address currency) external view returns(bool) {
 		return currency != address(0) && poolContracts[currency] != address(0);
 	}
+
+	function currenciesLength() external view returns(uint256) {
+		return currencies.length;
+	}
+
+	function getPoolRewardsContract(address currency) external view returns(address) {
+		return poolRewardsContracts[currency];
+	}
+
+	function getCapRewardsContract(address currency) external view returns(address) {
+		return capRewardsContracts[currency];
+	} 
 
 	/*
 	List of actions

@@ -17,11 +17,9 @@ contract Treasury is ITreasury {
 
 	// Contract dependencies
 	address public owner;
+	address public router;
 	address public trading;
 	address public oracle;
-	address public pool;
-	address public staking;
-	address public weth;
 
 	mapping(address => uint256) private clpShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capShare; // currency (eth, usdc, etc.) => bps
@@ -33,14 +31,22 @@ contract Treasury is ITreasury {
 		owner = msg.sender;
 	}
 
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
 	function setRouter(address _router) onlyOwner {
 		router = _router;
 	}
 
-	function setContracts() external {
+	function setContracts() external onlyOwner {
 		oracle = IRouter(router).oracleContract();
 		trading = IRouter(router).tradingContract();
 	}
+
+	// Methods
 
 	function notifyFeeReceived(
 		address user,
@@ -96,26 +102,6 @@ contract Treasury is ITreasury {
 		uint256 amount
 	) external onlyOwner {
 		IERC20(token).safeTransfer(destination, amount);
-	}
-
-	// Owner methods
-
-	function setParams(
-		uint256 _vaultThreshold
-	) external onlyOwner {
-		vaultThreshold = _vaultThreshold;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-	}
-
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
 	}
 
 	// Modifiers

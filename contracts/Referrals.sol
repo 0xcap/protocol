@@ -15,11 +15,8 @@ contract Referrals is IReferrals {
 
 	// Contract dependencies
 	address public owner;
-	address public trading;
-	address public oracle;
-	address public pool;
-	address public staking;
-	address public weth;
+	address public router;
+	address public treasury;
 
 	mapping(address => address) private referredBy; // referred user => referred by
 
@@ -28,6 +25,22 @@ contract Referrals is IReferrals {
 	constructor() {
 		owner = msg.sender;
 	}
+
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) external onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external onlyOwner {
+		treasury = IRouter(router).treasuryContract();
+	}
+
+	// Methods
 
 	function notifyRewardReceived(address referredUser, address currency, uint256 referredReward, uint256 referrerReward) external onlyTreasury {
 		address referrer = referredBy[referredUser];
@@ -56,26 +69,6 @@ contract Referrals is IReferrals {
 		IERC20(token).safeTransfer(destination, amount);
 	}
 
-	// Owner methods
-
-	function setParams(
-		uint256 _vaultThreshold
-	) external onlyOwner {
-		vaultThreshold = _vaultThreshold;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-	}
-
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
 	// Modifiers
 
 	modifier onlyOwner() {
@@ -83,13 +76,8 @@ contract Referrals is IReferrals {
 		_;
 	}
 
-	modifier onlyTrading() {
-		require(msg.sender == trading, "!trading");
-		_;
-	}
-
-	modifier onlyOracle() {
-		require(msg.sender == oracle, "!oracle");
+	modifier onlyTreasury() {
+		require(msg.sender == treasury, "!treasury");
 		_;
 	}
 

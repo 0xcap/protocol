@@ -9,7 +9,9 @@ import "@openzeppelin/contracts/utils/Address.sol";
 
 import "./libraries/Price.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
+import "./interfaces/IRewards.sol";
 import "./interfaces/ITrading.sol";
 
 contract Pool is IPool {
@@ -17,7 +19,10 @@ contract Pool is IPool {
 	using SafeERC20 for IERC20; 
     using Address for address payable;
 
+    // Contracts
 	address public owner;
+	address public router;
+	address public weth;
 	address public trading;
 	address public clp;
 
@@ -39,10 +44,120 @@ contract Pool is IPool {
     uint256 public clpSupply;
 
     mapping(address => uint256) lastStaked;
-    uint256 public minStakingTime;
+    uint256 public minStakingTime = 1 hours;
 
-	constructor() {
+    // Events
+    event Staked(
+    	address indexed user, 
+    	address indexed currency,
+    	uint256 amount, 
+    	uint256 clpAmount
+    );
+    event Unstaked(
+    	address indexed user, 
+    	address indexed currency,
+    	uint256 amount, 
+    	uint256 clpAmount
+    );
+
+	constructor(_currency) {
 		owner = msg.sender;
+		currency = _currency;
+	}
+
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) external onlyOwner {
+		router = _router;
+	}
+
+	function setMinStakingTime(uint256 _minStakingTime) external onlyOwner {
+		minStakingTime = _minStakingTime;
+	}
+
+	function setContracts() external onlyOwner {
+		trading = IRouter(router).tradingContract();
+		weth = IRouter(router).wethContract();
+		clp = IRouter(router).clpContract();
+		rewards = IRouter(router).getPoolRewardsContract(currency);
+	}
+
+	// Methods
+
+	function mintAndStakeCLP(uint256 amount) external payable returns(uint256) {
+
+		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+
+		if (currency == weth) { // User is sending ETH
+			require(msg.value > 0, "!amount");
+			amount = msg.value;
+			IWETH(currency).deposit{value: msg.value}();
+		} else {
+			IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
+		}
+
+		require(amount > 0, "!amount");
+
+        uint256 clpAmountToMint = currentBalance == 0 ? amount : amount * clpSupply / currentBalance;
+
+        // mint CLP
+        IMintableToken(clp).mint(address(this), clpAmountToMint);
+        _stake(clpAmountToMint);
+
+        emit Staked(
+        	msg.sender,
+        	currency,
+        	amount,
+        	clpAmountToMint
+        );
+
+        return clpAmountToMint;
+
+	}
+
+	function unstakeAndBurnCLP(uint256 amount) external payable returns(uint256) {
+
+		require(amount > 0, "!amount");
+
+		_unstake(amount);
+
+		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		uint256 utlization = getUtlization();
+		require(utlization < 10**4, "!utilization");
+		
+		uint256 availableBalance = currentBalance * (10**4 - utlization);
+
+		// Amount of currency (weth, usdc, etc) to send user
+		uint256 currencyAmount = amount * currentBalance / clpSupply;
+        uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee);
+
+        require(currencyAmountAfterFee <= availableBalance, "!balance");
+
+		// burn CLP
+		IMintableToken(clp).burn(address(this), amount);
+
+		// transfer token or ETH out
+		if (currency == weth) { // WETH
+			// Unwrap and send
+			IWETH(currency).withdraw(currencyAmountAfterFee);
+			payable(msg.sender).sendValue(currencyAmountAfterFee);
+		} else {
+			IERC20(currency).safeTransfer(msg.sender, currencyAmountAfterFee);
+		}
+
+		emit Unstaked(
+			msg.sender,
+			currency,
+			currencyAmountAfterFee,
+			amount
+		);
+
+		return amountAfterFee;
+		
 	}
 
 	function creditUserProfit(address destination, uint256 amount) external onlyTrading {
@@ -66,56 +181,7 @@ contract Pool is IPool {
 
 	}
 
-	function getUtlization() public view returns(uint256) {
-		uint256 activeMargin = ITrading(trading).getActiveMargin(currency);
-		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-		return activeMargin * utilizationMultiplier / currentBalance; // in bps
-	}
-
-	function mintAndStakeCLP(uint256 amount) external returns(uint256) {
-
-		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-
-		// Pool needs approval to spend from sender
-        IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
-
-        uint256 CLPAmountToMint = currentBalance == 0 ? amount : amount * clpSupply / currentBalance;
-
-        // mint CLP
-        IMintableToken(clp).mint(address(this), CLPAmountToMint);
-        _stake(CLPAmountToMint);
-
-        return CLPAmountToMint;
-
-	}
-
-	function unstakeAndBurnCLP(uint256 amount) external returns(uint256) {
-
-		require(amount > 0, "!amount");
-
-		_unstake(amount);
-
-		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-		uint256 utlization = getUtlization();
-		require(utlization < 10**4, "!utilization");
-		
-		uint256 availableBalance = currentBalance * (10**4 - utlization);
-
-		// Amount of currency (weth, usdc, etc) to send user
-		uint256 amountToSend = amount * currentBalance / clpSupply;
-        uint256 amountAfterFee = amountToSend * (10**4 - withdrawFee);
-
-        require(amountAfterFee <= availableBalance, "!balance");
-
-		// burn CLP
-		IMintableToken(clp).burn(address(this), amount);
-
-		// transfer token out
-		IERC20(currency).safeTransfer(msg.sender, amountAfterFee);
-
-		return amountAfterFee;
-		
-	}
+	// Internal
 
 	function _stake(uint256 amount) internal {
 		
@@ -132,7 +198,7 @@ contract Pool is IPool {
 
 	function _unstake(uint256 amount) internal {
 
-		require(lastStaked[msg.sender] > block.timestamp + minStakingTime, "!cooldown");
+		require(block.timestamp > lastStaked[msg.sender] + minStakingTime, "!cooldown");
 		require(amount > 0, "!amount");
 
 		IRewards(rewards).updateRewards(msg.sender);
@@ -142,6 +208,14 @@ contract Pool is IPool {
 		clpSupply -= amount;
 		balances[msg.sender] -= amount;
 
+	}
+
+	// Getters
+
+	function getUtlization() public view returns(uint256) {
+		uint256 activeMargin = ITrading(trading).getActiveMargin(currency);
+		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		return activeMargin * utilizationMultiplier / currentBalance; // in bps
 	}
 
 	function getStakedSupply() external {

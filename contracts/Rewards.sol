@@ -10,15 +10,17 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 
-// holds and pays out rewards for stakingToken in rewardToken
-
 contract Rewards is IRewards {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
 
-	address public staking;
-	address public rewardToken;
+    address public owner;
+	address public router;
+	address public treasury;
+
+	address public staking; // staking contract associated with these rewards
+	address public currency; // rewards paid in this
 
 	uint256 public cumulativeRewardPerTokenStored;
 	uint256 public pendingReward;
@@ -26,9 +28,33 @@ contract Rewards is IRewards {
 	mapping(address => uint256) private claimableReward;
 	mapping(address => uint256) private previousRewardPerToken;
 
-	constructor() {
+	event ClaimedReward(
+		address user,
+		address currency,
+		uint256 amount
+	);
+
+	constructor(address _staking, address _currency) {
 		owner = msg.sender;
+		staking = _staking;
+		currency = _currency;
 	}
+
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) external onlyOwner {
+		router = _router;
+	}
+
+	function setContracts() external onlyOwner {
+		treasury = IRouter(router).treasuryContract();
+	}
+
+	// Methods
 
 	function notifyRewardReceived(uint256 amount) external onlyTreasury {
 		pendingReward += amount;
@@ -54,7 +80,7 @@ contract Rewards is IRewards {
 
 	}
 
-	function collectRewards() external {
+	function collectReward() external {
 
 		updateRewards(msg.sender);
 
@@ -62,13 +88,13 @@ contract Rewards is IRewards {
 		claimableReward[msg.sender] = 0;
 
 		if (rewardToSend > 0) {
-			IERC20(rewardToken).safeTransfer(msg.sender, rewardToSend);
-			emit ClaimedReward(msg.sender, rewardToken, rewardToSend);
+			IERC20(currency).safeTransfer(msg.sender, rewardToSend);
+			emit CollectedReward(msg.sender, staking, currency, rewardToSend);
 		}
 
 	}
 
-	function getClaimableRewards() external view returns(uint256) {
+	function getClaimableReward() external view returns(uint256) {
 
 		uint256 currentClaimableReward = claimableReward[msg.sender];
 
