@@ -37,8 +37,8 @@ contract Router is IRouter {
 		owner = msg.sender;
 	}
 
-	function creditUserProfit(address user, address currency, uint256 amount) {
-		IPool(poolContracts[currency]).creditUserProfit(user, amount);
+	function isSupportedCurrency(address currency) external view returns(bool) {
+		return currency != address(0) && poolContracts[currency] != address(0);
 	}
 
 	/*

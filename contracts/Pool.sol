@@ -66,8 +66,8 @@ contract Pool is IPool {
 
 	}
 
-	function getUtlization() external view returns(uint256) {
-		uint256 activeMargin = ITrading(trading).getMarginPerCurrency(currency);
+	function getUtlization() public view returns(uint256) {
+		uint256 activeMargin = ITrading(trading).getActiveMargin(currency);
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
 		return activeMargin * utilizationMultiplier / currentBalance; // in bps
 	}
@@ -96,10 +96,16 @@ contract Pool is IPool {
 		_unstake(amount);
 
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		uint256 utlization = getUtlization();
+		require(utlization < 10**4, "!utilization");
+		
+		uint256 availableBalance = currentBalance * (10**4 - utlization);
 
 		// Amount of currency (weth, usdc, etc) to send user
 		uint256 amountToSend = amount * currentBalance / clpSupply;
         uint256 amountAfterFee = amountToSend * (10**4 - withdrawFee);
+
+        require(amountAfterFee <= availableBalance, "!balance");
 
 		// burn CLP
 		IMintableToken(clp).burn(address(this), amount);
@@ -124,7 +130,7 @@ contract Pool is IPool {
 
 	}
 
-	function unstake(uint256 amount) internal {
+	function _unstake(uint256 amount) internal {
 
 		require(lastStaked[msg.sender] > block.timestamp + minStakingTime, "!cooldown");
 		require(amount > 0, "!amount");
