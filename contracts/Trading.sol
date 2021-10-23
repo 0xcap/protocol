@@ -26,6 +26,8 @@ contract Trading {
 
 	// Structs
 
+	// TODO: review bytes
+
 	// To deactivate product, set maxLeverage to 0
 	struct Product {
 		// 32 bytes
@@ -183,11 +185,14 @@ contract Trading {
 
 	// Methods
 
+	// TODO: pre-method that wraps user's ETH for submitNewPosition, close order, add margin? 
+	// TODO: support WETH as currency sent
+
 	// Submit new position (price pending)
 	function submitNewPosition(
 		address currency,
 		uint256 productId,
-		uint256 margin,
+		uint256 margin, // net margin
 		uint256 leverage,
 		bool isLong,
 		address referrer
@@ -197,24 +202,24 @@ contract Trading {
 		require(leverage >= 10**8, "!leverage");
 		require(IRouter(router).isSupportedCurrency(currency), "!currency");
 
+		Product storage product = products[productId];
+		require(leverage <= uint256(product.maxLeverage) * 10**8, "!max-leverage");
+
+		uint256 fee;
+
 		if (currency == weth) { // User is sending ETH
-			require(msg.value > 0, "!margin");
-			margin = msg.value / 10**10;
+			require(msg.value > 0, "!margin"); // margin plus fee
+			fee = (msg.value / 10**10) * leverage * product.fee / 10**14;
+			margin = msg.value / 10**10 - fee;
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
+			fee = margin * leverage * product.fee / 10**14;
 			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin * 10**10);
 		}
 
 		require(margin > 0, "!margin");
 
-		Product storage product = products[productId];
-		require(leverage <= product.maxLeverage * 10**8, "!max-leverage");
-
-		uint256 netMargin = margin * (10**6 - product.fee) / 10**6;
-
-		_checkMinMargin(currency, netMargin);
-
-		uint256 fee = margin - netMargin;
+		_checkMinMargin(currency, margin);
 
 		// Add position
 		nextPositionId++;
@@ -225,7 +230,7 @@ contract Trading {
 			currency: currency,
 			leverage: uint64(leverage),
 			price: 0,
-			margin: uint64(netMargin),
+			margin: uint64(margin),
 			fee: uint96(fee),
 			timestamp: uint88(block.timestamp),
 			isLong: isLong
@@ -336,7 +341,7 @@ contract Trading {
 
 		Product memory product = products[position.productId];
 
-		uint256 fee = margin * product.fee / 10**6;
+		uint256 fee = margin * position.leverage * product.fee / 10**14;
 
 		if (currency == weth) {
 			require(msg.value >= fee * 10**10, "!fee");
@@ -610,6 +615,10 @@ contract Trading {
 		}
 
 	}
+
+	// To receive ETH from WETH
+	fallback() external payable {}
+	receive() external payable {}
 
 	// Utils
 

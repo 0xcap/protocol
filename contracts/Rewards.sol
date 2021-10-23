@@ -67,7 +67,7 @@ contract Rewards {
 
 		if (supply == 0) return;
 
-		cumulativeRewardPerTokenStored += pendingReward / supply;
+		cumulativeRewardPerTokenStored += pendingReward * 10**18 / supply;
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 

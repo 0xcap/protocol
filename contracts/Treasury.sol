@@ -123,6 +123,10 @@ contract Treasury {
 		IERC20(token).safeTransfer(destination, amount);
 	}
 
+	// To receive ETH from WETH
+	fallback() external payable {}
+	receive() external payable {}
+
 	// Modifiers
 
 	modifier onlyOwner() {

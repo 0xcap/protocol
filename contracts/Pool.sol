@@ -81,6 +81,10 @@ contract Pool {
 		minStakingTime = _minStakingTime;
 	}
 
+	function setUtilizationMultiplier(uint256 _utilizationMultiplier) external onlyOwner {
+		utilizationMultiplier = _utilizationMultiplier;
+	}
+
 	// Methods
 
 	function mintAndStakeCLP(uint256 amount) external payable returns(uint256) {
@@ -97,7 +101,8 @@ contract Pool {
 
 		require(amount > 0, "!amount");
 
-        uint256 clpAmountToMint = currentBalance == 0 ? amount : amount * clpSupply / currentBalance;
+		// So this doesn't return 0 when clpsupply = 0, which can happen with currentBalance > 0 e.g. trader closes losing position before pool is funded, || clpSupply == 0 is added
+        uint256 clpAmountToMint = currentBalance == 0 || clpSupply == 0 ? amount : amount * clpSupply / currentBalance;
 
         // mint CLP
         address clp = IRouter(router).getClpAddress(currency);
@@ -115,7 +120,7 @@ contract Pool {
 
 	}
 
-	function unstakeAndBurnCLP(uint256 amount) external payable returns(uint256) {
+	function unstakeAndBurnCLP(uint256 amount) external returns(uint256) {
 
 		require(amount > 0, "!amount");
 
@@ -125,11 +130,11 @@ contract Pool {
 		uint256 utlization = getUtlization();
 		require(utlization < 10**4, "!utilization");
 		
-		uint256 availableBalance = currentBalance * (10**4 - utlization);
+		uint256 availableBalance = currentBalance * (10**4 - utlization) / 10**4;
 
 		// Amount of currency (weth, usdc, etc) to send user
 		uint256 currencyAmount = amount * currentBalance / clpSupply;
-        uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee);
+        uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
 
         require(currencyAmountAfterFee <= availableBalance, "!balance");
 
@@ -207,6 +212,10 @@ contract Pool {
 
 	}
 
+	// To receive ETH from WETH
+	fallback() external payable {}
+	receive() external payable {}
+
 	// Getters
 
 	function getUtlization() public view returns(uint256) {
@@ -215,6 +224,7 @@ contract Pool {
 		return activeMargin * utilizationMultiplier / currentBalance; // in bps
 	}
 
+	// Todo: NOT NEEDED
 	function getStakedSupply() external view returns(uint256) {
 		return clpSupply;
 	}
