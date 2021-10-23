@@ -5,10 +5,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IRebates.sol";
 
-contract Rebates is IRebates {
+contract Rebates {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -30,7 +32,7 @@ contract Rebates is IRebates {
 		owner = newOwner;
 	}
 
-	function setRouter(address _router) onlyOwner {
+	function setRouter(address _router) external onlyOwner {
 		router = _router;
 	}
 

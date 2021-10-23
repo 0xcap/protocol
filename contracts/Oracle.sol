@@ -3,17 +3,19 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/IOracle.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
-contract Oracle is IOracle {
+contract Oracle {
 
 	// Contract dependencies
 	address public owner;
 	address public router;
 	address public darkOracle;
 	address public treasury;
+	address public trading;
 
 	// Variables
 	uint256 public requestsPerFunding = 100;
@@ -36,11 +38,12 @@ contract Oracle is IOracle {
 		owner = newOwner;
 	}
 
-	function setRouter(address _router) onlyOwner {
+	function setRouter(address _router) external onlyOwner {
 		router = _router;
 	}
 
 	function setContracts() external onlyOwner {
+		trading = IRouter(router).tradingContract();
 		treasury = IRouter(router).treasuryContract();
 		darkOracle = IRouter(router).darkOracleAddress();
 	}
@@ -127,7 +130,8 @@ contract Oracle is IOracle {
 		requestsSinceFunding += newRequests;
 		if (requestsSinceFunding >= requestsPerFunding) {
 			requestsSinceFunding = 0;
-			ITreasury(treasury).fundOracle(oracle, costPerRequest * requestsPerFunding);
+			ITreasury(treasury).fundOracle(darkOracle, costPerRequest * requestsPerFunding);
+			// TODO: event
 		}
 	}
 
@@ -138,8 +142,8 @@ contract Oracle is IOracle {
 		_;
 	}
 
-	modifier onlyOracle() {
-		require(msg.sender == oracle, "!oracle");
+	modifier onlyDarkOracle() {
+		require(msg.sender == darkOracle, "!dark-oracle");
 		_;
 	}
 

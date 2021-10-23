@@ -7,14 +7,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
-import "./libraries/Price.sol";
-
 import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IRewards.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IWETH.sol";
+import "./interfaces/IMintableToken.sol";
 
-contract Pool is IPool {
+contract Pool {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -60,7 +60,7 @@ contract Pool is IPool {
     	uint256 clpAmount
     );
 
-	constructor(_currency) {
+	constructor(address _currency) {
 		owner = msg.sender;
 		currency = _currency;
 	}
@@ -156,7 +156,7 @@ contract Pool is IPool {
 			amount
 		);
 
-		return amountAfterFee;
+		return currencyAmountAfterFee;
 		
 	}
 
@@ -218,12 +218,24 @@ contract Pool is IPool {
 		return activeMargin * utilizationMultiplier / currentBalance; // in bps
 	}
 
-	function getStakedSupply() external {
+	function getStakedSupply() external view returns(uint256) {
 		return clpSupply;
 	}
 
-	function getStakedBalance(address account) external {
+	function getStakedBalance(address account) external view returns(uint256) {
 		return balances[account];
+	}
+
+	// Modifier
+
+	modifier onlyOwner() {
+		require(msg.sender == owner, "!owner");
+		_;
+	}
+
+	modifier onlyTrading() {
+		require(msg.sender == trading, "!trading");
+		_;
 	}
 
 }

@@ -5,10 +5,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IReferrals.sol";
 
-contract Referrals is IReferrals {
+contract Referrals {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -17,6 +19,7 @@ contract Referrals is IReferrals {
 	address public owner;
 	address public router;
 	address public treasury;
+	address public trading;
 
 	mapping(address => address) private referredBy; // referred user => referred by
 
@@ -37,6 +40,7 @@ contract Referrals is IReferrals {
 	}
 
 	function setContracts() external onlyOwner {
+		trading = IRouter(router).tradingContract();
 		treasury = IRouter(router).treasuryContract();
 	}
 
@@ -55,12 +59,16 @@ contract Referrals is IReferrals {
 		IERC20(currency).safeTransfer(msg.sender, amount);
 	}
 
-	function setReferrer(address referredUser, address referrer) {
+	function setReferrer(address referredUser, address referrer) external onlyTrading {
 		if (referredBy[referredUser] == address(0)) {
 			referredBy[referredUser] = referrer;
 		}
 	}
-	
+		
+	function getReferrerOf(address user) external view returns(address) {
+		return referredBy[user];
+	}
+
 	function sendToken(
 		address token, 
 		address destination, 
@@ -78,6 +86,11 @@ contract Referrals is IReferrals {
 
 	modifier onlyTreasury() {
 		require(msg.sender == treasury, "!treasury");
+		_;
+	}
+
+	modifier onlyTrading() {
+		require(msg.sender == trading, "!trading");
 		_;
 	}
 

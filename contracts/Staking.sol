@@ -7,12 +7,15 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IStaking.sol";
+import "./interfaces/IRewards.sol";
 
 // For CAP only
 
-contract Staking is IStaking {
+contract Staking {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -69,11 +72,11 @@ contract Staking is IStaking {
 
 	}
 
-	function getStakedSupply() external {
+	function getStakedSupply() external view returns(uint256) {
 		return totalSupply;
 	}
 
-	function getStakedBalance(address account) external {
+	function getStakedBalance(address account) external view returns(uint256) {
 		return balances[account];
 	}
 
@@ -84,6 +87,11 @@ contract Staking is IStaking {
 			address rewardsContract = IRouter(router).getCapRewardsContract(currency);
 			IRewards(rewardsContract).updateRewards(msg.sender);
 		}
+	}
+
+	modifier onlyOwner() {
+		require(msg.sender == owner, "!owner");
+		_;
 	}
 
 }

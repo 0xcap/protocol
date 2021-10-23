@@ -5,8 +5,10 @@ interface ITreasury {
 
 	function fundOracle(address destination, uint256 amount) external;
 
-	function creditVault() external payable;
-
-	function debitVault(address destination, uint256 amount) external;
+	function notifyFeeReceived(
+		address user,
+		address currency, 
+		uint256 amount
+	) external;
 
 }

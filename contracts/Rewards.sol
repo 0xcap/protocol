@@ -7,10 +7,13 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IRewards.sol";
+import "./interfaces/IStaking.sol";
 
-contract Rewards is IRewards {
+contract Rewards {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -28,8 +31,9 @@ contract Rewards is IRewards {
 	mapping(address => uint256) private claimableReward;
 	mapping(address => uint256) private previousRewardPerToken;
 
-	event ClaimedReward(
+	event CollectedReward(
 		address user,
+		address stakingContract,
 		address currency,
 		uint256 amount
 	);
@@ -110,6 +114,16 @@ contract Rewards is IRewards {
 
 		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
 		
+	}
+
+	modifier onlyOwner() {
+		require(msg.sender == owner, "!owner");
+		_;
+	}
+
+	modifier onlyTreasury() {
+		require(msg.sender == treasury, "!treasury");
+		_;
 	}
 
 }

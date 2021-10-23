@@ -7,10 +7,17 @@ import "@openzeppelin/contracts/utils/Address.sol";
 
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
+import "./interfaces/IRouter.sol";
 
-// Sends user queries to various contracts: staking, rewards, etc. Upgradeable
+/*
+TODO:
+- compile
+- events
+- deploy and test in js
+- client
+*/
 
-contract Router is IRouter {
+contract Router {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -51,6 +58,10 @@ contract Router is IRouter {
 		return currencies.length;
 	}
 
+	function getPoolContract(address currency) external view returns(address) {
+		return poolContracts[currency];
+	}
+
 	function getPoolRewardsContract(address currency) external view returns(address) {
 		return poolRewardsContracts[currency];
 	}
@@ -59,22 +70,7 @@ contract Router is IRouter {
 		return capRewardsContracts[currency];
 	} 
 
-	/*
-	List of actions
-	user
-	- submit new order
-	- add margin
-	- close position
-	- stake currency for CLP (mint)
-	- unstake CLP for currency (burn)
-	- collect rewards for CLP-currency
-	- collect rewards for CAP-currency
-	- stake CAP
-	- unstake CAP
-
-	internal
-	- getters for the contract addresses
-	*/
+	// From router on the client, you can get the addresses of all the other contracts. No need for methods here
 
 	// Owner methods
 

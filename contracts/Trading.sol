@@ -8,14 +8,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IReferrals.sol";
+import "./interfaces/IWETH.sol";
 
 // keep everything in one contract
 
-contract Trading is ITrading {
+contract Trading {
 
 	using SafeERC20 for IERC20;
     using Address for address payable;
@@ -108,13 +110,9 @@ contract Trading is ITrading {
 		uint256 positionId, 
 		address indexed user, 
 		uint256 indexed productId, 
-		bool indexed isFullClose, 
-		address currency,
-		bool isLong,
-		uint256 price, 
-		uint256 entryPrice, 
-		uint256 margin, 
-		uint256 leverage, 
+		Position position,
+		uint256 price,
+		uint256 margin,
 		uint256 fee, 
 		uint256 pnl, 
 		bool pnlIsNegative, 
@@ -158,24 +156,32 @@ contract Trading is ITrading {
 	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
 		Product memory product = products[productId];
 		require(product.oracleMaxDeviation == 0, "!product-exists");
+
+		require(_product.liquidationThreshold > 0, "!liqThreshold");
+
 		products[productId] = Product({
 			feed: _product.feed,
 			maxLeverage: _product.maxLeverage,
+			oracleMaxDeviation: _product.oracleMaxDeviation,
 			fee: _product.fee,
 			interest: _product.interest,
-			oracleMaxDeviation: _product.oracleMaxDeviation
+			liquidationThreshold: _product.liquidationThreshold
 		});
 	}
 
 	function updateProduct(uint256 productId, Product memory _product) external onlyOwner {
 		Product storage product = products[productId];
 		require(product.oracleMaxDeviation > 0, "!product-does-not-exist");
+		
 		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
+		require(_product.liquidationThreshold > 0, "!liqThreshold");
+
 		product.feed = _product.feed;
 		product.maxLeverage = _product.maxLeverage;
 		product.fee = _product.fee;
 		product.interest = _product.interest;
 		product.oracleMaxDeviation = _product.oracleMaxDeviation;
+		product.liquidationThreshold = _product.liquidationThreshold;
 	}
 
 	// Methods
@@ -264,7 +270,7 @@ contract Trading is ITrading {
 		// Send fee to treasury
 		address currency = position.currency;
 		uint256 feeAmount = position.fee * 10**10;
-		_sendFeeToTreasury(currency, feeAmount);
+		_sendFeeToTreasury(position.owner, currency, feeAmount);
 
 		activeMargin[currency] += position.margin;
 
@@ -296,7 +302,7 @@ contract Trading is ITrading {
 			msg.sender != positionOwner && msg.sender != oracle
 		) return;
 
-		uint256 currency = position.currency;
+		address currency = position.currency;
 		uint256 fee = position.fee;
 
 		delete positions[positionId];
@@ -328,7 +334,7 @@ contract Trading is ITrading {
 		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
 
-		uint256 currency = position.currency;
+		address currency = position.currency;
 		_checkMinMargin(currency, margin);
 
 		Product memory product = products[position.productId];
@@ -344,15 +350,15 @@ contract Trading is ITrading {
 
 		nextCloseOrderId++;
 		closeOrders[nextCloseOrderId] = Order({
-			positionId: uint64(positionId),
-			productId: uint32(position.productId),
+			positionId: uint32(positionId),
+			productId: uint16(position.productId),
 			margin: uint64(margin),
 			fee: uint64(fee),
-			timestamp: uint88(block.timestamp),
-			isLong: position.isLong,
+			timestamp: uint72(block.timestamp),
+			isLong: position.isLong
 		});
 
-		position.closeOrderId = uint40(nextCloseOrderId);
+		position.closeOrderId = uint32(nextCloseOrderId);
 
 	}
 
@@ -367,9 +373,7 @@ contract Trading is ITrading {
 		uint256 margin = _closeOrder.margin;
 		require(margin > 0, "!margin");
 
-		uint256 positionId = _closeOrder.positionId;
-
-		Position storage position = positions[positionId];
+		Position storage position = positions[_closeOrder.positionId];
 		require(position.margin > 0, "!position");
 		require(position.closeOrderId == orderId, "!order");
 		require(position.price > 0, "!opening");
@@ -385,46 +389,39 @@ contract Trading is ITrading {
 		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
 
 		// Check if it's a liquidation
-		bool isLiquidation;
 		if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4) {
 			pnl = uint256(position.margin);
 			margin = uint256(position.margin);
-			isLiquidation = true;
 		}
 
 		position.margin -= uint64(margin);
 
-		address currency = position.currency;
-
-		if (margin > activeMargin[currency]) {
-			activeMargin[currency] = 0;
+		if (margin > activeMargin[position.currency]) {
+			activeMargin[position.currency] = 0;
 		} else {
-			activeMargin[currency] -= margin;
+			activeMargin[position.currency] -= margin;
 		}
 
-		_sendFeeToTreasury(currency, _closeOrder.fee * 10**10);
-
-		address positionOwner = position.owner;
+		_sendFeeToTreasury(position.owner, position.currency, _closeOrder.fee * 10**10);
 
 		emit ClosePosition(
-			positionId, 
-			positionOwner, 
+			_closeOrder.positionId, 
+			position.owner, 
 			position.productId, 
-			position.margin == 0,
-			currency, 
-			position.isLong,
+			position, 
 			price, 
-			position.price,
 			margin, 
-			position.leverage, 
 			_closeOrder.fee,
 			pnl, 
 			pnlIsNegative, 
-			isLiquidation
+			position.margin == 0
 		);
 
+		address positionOwner = position.owner;
+		address currency = position.currency;
+
 		if (position.margin == 0) {
-			delete positions[positionId];
+			delete positions[_closeOrder.positionId];
 		} else {
 			position.closeOrderId = 0;
 		}
@@ -487,14 +484,10 @@ contract Trading is ITrading {
 			positionId, 
 			positionOwner, 
 			position.productId, 
-			true,
-			currency, 
-			position.isLong,
+			position, 
 			position.price, 
-			position.price,
 			margin, 
-			position.leverage, 
-			position.fee, 
+			0,
 			0, 
 			false, 
 			false
@@ -532,7 +525,7 @@ contract Trading is ITrading {
 		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
 
-		uint256 currency = position.currency;
+		address currency = position.currency;
 
 		if (currency == weth) { // User is sending ETH
 			require(msg.value > 0, "!margin");
@@ -590,29 +583,26 @@ contract Trading is ITrading {
 
 			if (pnlIsNegative && pnl >= uint256(margin) * uint256(product.liquidationThreshold) / 10**4) {
 
-				address currency = position.currency;
-				IERC20(currency).safeTransfer(treasury, margin * 10**10);
+				_sendFeeToTreasury(position.owner, position.currency, margin * 10**10);
 
-				if (margin > activeMargin[currency]) {
-					activeMargin[currency] = 0;
+				if (margin > activeMargin[position.currency]) {
+					activeMargin[position.currency] = 0;
 				} else {
-					activeMargin[currency] -= margin;
+					activeMargin[position.currency] -= margin;
 				}
+
+				position.margin = 0;
 
 				emit ClosePosition(
 					positionId, 
 					position.owner, 
 					position.productId, 
-					true,
-					currency,
-					position.isLong,
+					position, 
 					price, 
-					position.price,
 					margin, 
-					position.leverage, 
-					position.fee,
-					margin,
-					true,
+					0,
+					margin, 
+					true, 
 					true
 				);
 
@@ -633,9 +623,9 @@ contract Trading is ITrading {
 		require(margin >= minMargin[currency], "!min-margin");
 	}
 
-	function _sendFeeToTreasury(address currency, uint256 amount) internal {
+	function _sendFeeToTreasury(address user, address currency, uint256 amount) internal {
 		IERC20(currency).safeTransfer(treasury, amount);
-		ITreasury(treasury).notifyFeeReceived(currency, amount);
+		ITreasury(treasury).notifyFeeReceived(user, currency, amount);
 	}
 
 	function _validatePrice(

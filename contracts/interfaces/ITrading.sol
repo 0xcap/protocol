@@ -3,8 +3,6 @@ pragma solidity ^0.8.0;
 
 interface ITrading {
 
-	function fundVault() external payable;
-
 	function settleNewPosition(
 		uint256 positionId,
 		uint256 price
@@ -23,5 +21,7 @@ interface ITrading {
 		uint256[] calldata positionIds,
 		uint256[] calldata prices
 	) external;
+
+	function getActiveMargin(address currency) external view returns(uint256);
 
 }

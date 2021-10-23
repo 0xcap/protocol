@@ -5,12 +5,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
+import "./interfaces/IRewards.sol";
+import "./interfaces/IRebates.sol";
+import "./interfaces/IReferrals.sol";
+import "./interfaces/IWETH.sol";
+
 // This contract should be relatively upgradeable = no important state
 
-contract Treasury is ITreasury {
+contract Treasury {
 
 	using SafeERC20 for IERC20; 
     using Address for address payable;
@@ -20,10 +26,11 @@ contract Treasury is ITreasury {
 	address public router;
 	address public trading;
 	address public oracle;
+	address public weth;
 
-	mapping(address => uint256) private clpShare; // currency (eth, usdc, etc.) => bps
+	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private standardRebateShare; // currency => bps
+	mapping(address => uint256) private rebateShare; // currency => bps
 	mapping(address => uint256) private referrerShare; // currency => bps
 	mapping(address => uint256) private referredShare; // currency => bps
 
@@ -37,13 +44,30 @@ contract Treasury is ITreasury {
 		owner = newOwner;
 	}
 
-	function setRouter(address _router) onlyOwner {
+	function setRouter(address _router) external onlyOwner {
 		router = _router;
 	}
 
 	function setContracts() external onlyOwner {
 		oracle = IRouter(router).oracleContract();
 		trading = IRouter(router).tradingContract();
+		weth = IRouter(router).wethContract();
+	}
+
+	function setPoolShare(address currency, uint256 share) external onlyOwner {
+		poolShare[currency] = share;
+	}
+	function setCapShare(address currency, uint256 share) external onlyOwner {
+		capShare[currency] = share;
+	}
+	function setRebateShare(address currency, uint256 share) external onlyOwner {
+		rebateShare[currency] = share;
+	}
+	function setReferrerShare(address currency, uint256 share) external onlyOwner {
+		referrerShare[currency] = share;
+	}
+	function setReferredShare(address currency, uint256 share) external onlyOwner {
+		referredShare[currency] = share;
 	}
 
 	// Methods
@@ -55,30 +79,28 @@ contract Treasury is ITreasury {
 	) external onlyTrading {
 
 		// Contracts from Router
-		address clpRewardsContract = IRouter(router).getClpRewardsContract(currency);
+		address poolRewardsContract = IRouter(router).getPoolRewardsContract(currency);
 		address capRewardsContract = IRouter(router).getCapRewardsContract(currency);
 		address rebatesContract = IRouter(router).rebatesContract();
 		address referralsContract = IRouter(router).referralsContract();
 
-		// Send clpShare[currency] * amount to clp-currency rewards contract
-		uint256 clpReward = clpShare[currency] * amount / 10**4;
-		address clpRewardsContract = clpRewardsContracts[currency];
-		IERC20(currency).safeTransfer(clpRewardsContract, clpReward);
-		IRewards(clpRewardsContract).notifyRewardReceived(clpReward);
+		// Send poolShare[currency] * amount to pool-currency rewards contract
+		uint256 poolReward = poolShare[currency] * amount / 10**4;
+		IERC20(currency).safeTransfer(poolRewardsContract, poolReward);
+		IRewards(poolRewardsContract).notifyRewardReceived(poolReward);
 
 		// Send capShare[currency] * amount to cap-currency rewards contract
 		uint256 capReward = capShare[currency] * amount / 10**4;
-		address capRewardsContract = capRewardsContracts[currency];
 		IERC20(currency).safeTransfer(capRewardsContract, capReward);
 		IRewards(capRewardsContract).notifyRewardReceived(capReward);
 
-		// Send standardRebateShare to rebates contract
-		uint256 standardRebate = standardRebateShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(rebatesContract, standardRebate);
-		IRebates(rebatesContract).notifyRebateReceived(user, currency, standardRebate);
+		// Send rebateShare to rebates contract
+		uint256 rebate = rebateShare[currency] * amount / 10**4;
+		IERC20(currency).safeTransfer(rebatesContract, rebate);
+		IRebates(rebatesContract).notifyRebateReceived(user, currency, rebate);
 
 		// Send referrerShare, referredShare to referrals contract
-		address referredBy = IReferrals(referralsContract).referrerOf(user);
+		address referredBy = IReferrals(referralsContract).getReferrerOf(user);
 		if (referredBy != address(0)) {
 			uint256 referrerReward = referrerShare[currency] * amount / 10**4;
 			uint256 referredReward = referredShare[currency] * amount / 10**4;
@@ -91,7 +113,7 @@ contract Treasury is ITreasury {
 	function fundOracle(
 		address destination, 
 		uint256 amount
-	) external override onlyOracle {
+	) external onlyOracle {
 		IWETH(weth).withdraw(amount);
 		payable(destination).sendValue(amount);
 	}
