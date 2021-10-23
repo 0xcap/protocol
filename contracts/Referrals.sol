@@ -37,9 +37,6 @@ contract Referrals {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-	}
-
-	function setContracts() external onlyOwner {
 		trading = IRouter(router).tradingContract();
 		treasury = IRouter(router).treasuryContract();
 	}

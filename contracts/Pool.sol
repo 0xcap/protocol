@@ -24,7 +24,6 @@ contract Pool {
 	address public router;
 	address public weth;
 	address public trading;
-	address public clp;
 
 	uint256 public withdrawFee = 15; // 0.15%
 
@@ -73,17 +72,13 @@ contract Pool {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
+		trading = IRouter(router).tradingContract();
+		weth = IRouter(router).wethContract();
+		rewards = IRouter(router).getPoolRewardsContract(currency);
 	}
 
 	function setMinStakingTime(uint256 _minStakingTime) external onlyOwner {
 		minStakingTime = _minStakingTime;
-	}
-
-	function setContracts() external onlyOwner {
-		trading = IRouter(router).tradingContract();
-		weth = IRouter(router).wethContract();
-		clp = IRouter(router).clpContract();
-		rewards = IRouter(router).getPoolRewardsContract(currency);
 	}
 
 	// Methods
@@ -105,6 +100,7 @@ contract Pool {
         uint256 clpAmountToMint = currentBalance == 0 ? amount : amount * clpSupply / currentBalance;
 
         // mint CLP
+        address clp = IRouter(router).getClpAddress(currency);
         IMintableToken(clp).mint(address(this), clpAmountToMint);
         _stake(clpAmountToMint);
 
@@ -138,6 +134,7 @@ contract Pool {
         require(currencyAmountAfterFee <= availableBalance, "!balance");
 
 		// burn CLP
+		address clp = IRouter(router).getClpAddress(currency);
 		IMintableToken(clp).burn(address(this), amount);
 
 		// transfer token or ETH out

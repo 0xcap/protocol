@@ -8,7 +8,7 @@ contract MintableToken is ERC20 {
     address public owner;
     address public minter;
 
-    constructor(string memory name, string memory symbol) public ERC20(name, symbol) {
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         owner = msg.sender;
     }
 

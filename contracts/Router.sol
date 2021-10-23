@@ -35,6 +35,7 @@ contract Router {
 	mapping(address => address) poolContracts; // currency => contract
 	mapping(address => address) poolRewardsContracts; // currency => contract
 	mapping(address => address) capRewardsContracts; // currency => contract
+	mapping(address => address) clpAddresses; // currency => clp-eth, clp-usdc
 	
 	address public tradingContract;
 	address public capStakingContract;
@@ -62,13 +63,59 @@ contract Router {
 		return poolContracts[currency];
 	}
 
+	function getClpAddress(address currency) external view returns(address) {
+		return clpAddresses[currency];
+	}
+
 	function getPoolRewardsContract(address currency) external view returns(address) {
 		return poolRewardsContracts[currency];
 	}
 
 	function getCapRewardsContract(address currency) external view returns(address) {
 		return capRewardsContracts[currency];
-	} 
+	}
+
+	// Setters
+
+	function setCurrencies(address[] calldata _currencies) external onlyOwner {
+		currencies = _currencies;
+	}
+
+	function setContracts(
+		address _tradingContract,
+		address _capStakingContract,
+		address _rebatesContract,
+		address _referralsContract,
+		address _oracleContract,
+		address _wethContract,
+		address _treasuryContract,
+		address _darkOracleAddress
+	) external onlyOwner {
+		tradingContract = _tradingContract;
+		capStakingContract = _capStakingContract;
+		rebatesContract = _rebatesContract;
+		referralsContract = _referralsContract;
+		oracleContract = _oracleContract;
+		wethContract = _wethContract;
+		treasuryContract = _treasuryContract;
+		darkOracleAddress = _darkOracleAddress;
+	}
+
+	function setPoolContract(address currency, address _contract) external onlyOwner {
+		poolContracts[currency] = _contract;
+	}
+
+	function setClpAddress(address currency, address _clp) external onlyOwner {
+		clpAddresses[currency] = _clp;
+	}
+
+	function setPoolRewardsContract(address currency, address _contract) external onlyOwner {
+		poolRewardsContracts[currency] = _contract;
+	}
+
+	function setCapRewardsContract(address currency, address _contract) external onlyOwner {
+		capRewardsContracts[currency] = _contract;
+	}
 
 	// From router on the client, you can get the addresses of all the other contracts. No need for methods here
 

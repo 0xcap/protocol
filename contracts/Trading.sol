@@ -30,7 +30,7 @@ contract Trading {
 	struct Product {
 		// 32 bytes
 		address feed; // Chainlink. Can be address(0) for no bounding. 20 bytes
-		uint32 maxLeverage; // 4 bytes. In units * 8 decimals, eg 100 * 10^8 = 100x
+		uint32 maxLeverage; // 4 bytes. In units eg 100 = 100x
 		uint16 oracleMaxDeviation; // in bps. 2 bytes
 		uint16 liquidationThreshold; // in bps. 8000 = 80%. 2 bytes
 		uint16 fee; // In sbps (10^6). 0.5% = 5000. 0.025% = 250. 2 bytes
@@ -137,9 +137,6 @@ contract Trading {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-	}
-
-	function setContracts() external onlyOwner {
 		treasury = IRouter(router).treasuryContract();
 		oracle = IRouter(router).oracleContract();
 		weth = IRouter(router).wethContract();
@@ -211,7 +208,7 @@ contract Trading {
 		require(margin > 0, "!margin");
 
 		Product storage product = products[productId];
-		require(leverage <= product.maxLeverage, "!max-leverage");
+		require(leverage <= product.maxLeverage * 10**8, "!max-leverage");
 
 		uint256 netMargin = margin * (10**6 - product.fee) / 10**6;
 

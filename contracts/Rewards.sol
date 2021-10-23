@@ -52,9 +52,6 @@ contract Rewards {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-	}
-
-	function setContracts() external onlyOwner {
 		treasury = IRouter(router).treasuryContract();
 	}
 

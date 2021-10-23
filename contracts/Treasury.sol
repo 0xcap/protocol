@@ -46,9 +46,6 @@ contract Treasury {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-	}
-
-	function setContracts() external onlyOwner {
 		oracle = IRouter(router).oracleContract();
 		trading = IRouter(router).tradingContract();
 		weth = IRouter(router).wethContract();

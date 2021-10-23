@@ -28,82 +28,31 @@ async function main() {
   console.log('owner', owner.address);
   //console.log('user', user.address);
 
-  const tradingAddress = '0xA55Eee92a46A50A4C65908F28A0BE966D3e71633';
-  const oracleAddress = '0x08AAcc8FA22133b97324765B973704Ca286a6D76';
-  const treasuryAddress = '0x1058AFe66BB5b79C295CCCE51016586949Bc4e8d';
 
-  // console.log('Owner balance', formatUnits(await provider.getBalance(owner.address)));
-  // //console.log('User balance', formatUnits(await provider.getBalance(user.address)));
-  // console.log('Trading balance', formatUnits(await provider.getBalance(tradingAddress)));
-  // console.log('Oracle balance', formatUnits(await provider.getBalance(oracleAddress)));
-  // console.log('Treasury balance', formatUnits(await provider.getBalance(treasuryAddress)));
+  // To complete
 
-  const trading = await (await ethers.getContractFactory("Trading")).attach(tradingAddress);
-  const oracle = await (await ethers.getContractFactory("Oracle")).attach(oracleAddress);
-  const treasury = await (await ethers.getContractFactory("Treasury")).attach(treasuryAddress);
+  const usdcAddress = '';
 
-  //console.log('Oracle addrs', await oracle.owner(), await oracle.trading(), await oracle.treasury(), await oracle.oracle());
-  //console.log('Treasury addrs', await oracle.owner(), await oracle.trading(), await oracle.oracle());
-  //console.log('Products', await trading.getProduct(1), await trading.getProduct(2));
+  // Other contract addresses can be obtained through router
+  const routerAddress = '0xA55Eee92a46A50A4C65908F28A0BE966D3e71633';
+  const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
-  const products = {
-    arbitrum: [
-      {
-        id: 1, // ETH-USD
-        feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
-        leverage: 50,
-        fee: 0.15,
-        symbol: 'ETH-USD'
-      },
-      {
-        id: 2, // BTC-USD
-        feed: '0x6ce185860a4963106506C203335A2910413708e9',
-        leverage: 100,
-        fee: 0.15,
-        symbol: 'BTC-USD'
-      }
-    ]
-  };
+  const wethAddress = await router.wethContract();
 
-  // // Add products
-  // const network = hre.network.name;
-  // console.log('network', network);
+  const trading = await (await ethers.getContractFactory("Trading")).attach(await router.tradingContract());
+  const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracleContract());
+  const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasuryContract());
+  
+  const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPoolContract(wethAddress));
+  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPoolContract(usdcAddress));
 
-  // for (const p of products[network]) {
-  //   await trading.addProduct(p.id, [
-  //     p.feed,
-  //     parseUnits(""+p.leverage, 8),
-  //     p.fee * 100,
-  //     1200,
-  //     true,
-  //     parseUnits("1000", 8),
-  //     0,
-  //     0,
-  //     250, 
-  //     0
-  //   ]);
-  //   console.log('Added product ' + p.symbol);
-  // }
+  const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewardsContract(usdcAddress));
+  const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewardsContract(usdcAddress));
 
-  // Update products
-  const network = hre.network.name;
-  console.log('network', network);
+  const capStaking = await (await ethers.getContractFactory("Staking")).attach(await router.capStakingContract());
 
-  for (const p of products[network]) {
-    await trading.updateProduct(p.id, [
-      p.feed,
-      parseUnits(""+p.leverage, 8),
-      p.fee * 100,
-      1600,
-      true,
-      parseUnits("750", 8),
-      0,
-      0,
-      250, 
-      0
-    ]);
-    console.log('Updated product ' + p.symbol);
-  }
+  const capRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewardsContract(usdcAddress));
+  const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewardsContract(usdcAddress));
   
   
   // console.log('Treasury balance1', formatUnits(await provider.getBalance(treasuryAddress)));
