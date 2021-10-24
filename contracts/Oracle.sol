@@ -8,6 +8,8 @@ import "./interfaces/IOracle.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
+// TODO: support for multiple dark oracle addresses
+
 contract Oracle {
 
 	// Contract dependencies

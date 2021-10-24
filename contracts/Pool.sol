@@ -14,6 +14,8 @@ import "./interfaces/ITrading.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/IMintableToken.sol";
 
+// TODO: max cap on pool
+
 contract Pool {
 
 	using SafeERC20 for IERC20; 
