@@ -21,6 +21,7 @@ contract Trading {
 
 	using SafeERC20 for IERC20;
     using Address for address payable;
+    using EnumerableSet for EnumerableSet.UintSet;
 
 	// All amounts are stored with 8 decimals unless stated otherwise
 
@@ -83,6 +84,8 @@ contract Trading {
 	mapping(uint256 => Product) private products;
 	mapping(uint256 => Position) private positions;
 	mapping(uint256 => Order) private closeOrders;
+
+	mapping(address => EnumerableSet.UintSet) private userPositionIds;
 
 	mapping(address => uint256) activeMargin; // for pool utilization
 
@@ -214,7 +217,7 @@ contract Trading {
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
 			fee = margin * leverage * product.fee / 10**14;
-			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin * 10**10);
+			IERC20(currency).safeTransferFrom(msg.sender, address(this), (margin + fee) * 10**10);
 		}
 
 		require(margin > 0, "!margin");
@@ -236,10 +239,13 @@ contract Trading {
 			isLong: isLong
 		});
 
+		userPositionIds[msg.sender].add(nextPositionId);
+
 		// Set referrer
 		if (referrer != address(0) && referrer != msg.sender) {
 			IReferrals(referrals).setReferrer(msg.sender, referrer);
 		}
+
 
 		emit OpenOrder(
 			nextPositionId,
@@ -308,6 +314,9 @@ contract Trading {
 		uint256 fee = position.fee;
 
 		delete positions[positionId];
+
+		userPositionIds[positionOwner].remove(positionId);
+
 
 		// Refund margin + fee
 		uint256 marginPlusFee = (margin + fee) * 10**10;
@@ -423,6 +432,7 @@ contract Trading {
 		address currency = position.currency;
 
 		if (position.margin == 0) {
+			userPositionIds[position.owner].remove(_closeOrder.positionId);
 			delete positions[_closeOrder.positionId];
 		} else {
 			position.closeOrderId = 0;
@@ -608,6 +618,8 @@ contract Trading {
 					true
 				);
 
+				userPositionIds[position.owner].remove(positionId);
+
 				delete positions[positionId];
 
 			}
@@ -756,6 +768,15 @@ contract Trading {
 			_orders[i] = closeOrders[orderIds[i]];
 		}
 		return _orders;
+	}
+
+	function getUserPositions(address user) external view returns(Position[] memory _positions) {
+		uint256 length = userPositionIds[user].length;
+		_positions = new Position[](length);
+		for (uint256 i=0; i < length; i++) {
+			_positions[i] = userPositionIds[user].at(i);
+		}
+		return _positions;
 	}
 
 	// Modifiers
