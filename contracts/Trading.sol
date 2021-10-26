@@ -7,6 +7,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/ITrading.sol";
@@ -56,7 +57,8 @@ contract Trading {
 
 		// 28 bytes
 		address currency; // weth, usdc, etc. 20 bytes
-		uint96 fee; // 12 bytes
+		uint64 fee; // 8 bytes
+		uint32 positionId; // 4 bytes
 	}
 
 	struct Order {
@@ -234,9 +236,10 @@ contract Trading {
 			leverage: uint64(leverage),
 			price: 0,
 			margin: uint64(margin),
-			fee: uint96(fee),
+			fee: uint64(fee),
 			timestamp: uint88(block.timestamp),
-			isLong: isLong
+			isLong: isLong,
+			positionId: 0
 		});
 
 		userPositionIds[msg.sender].add(nextPositionId);
@@ -771,10 +774,13 @@ contract Trading {
 	}
 
 	function getUserPositions(address user) external view returns(Position[] memory _positions) {
-		uint256 length = userPositionIds[user].length;
+		uint256 length = userPositionIds[user].length();
 		_positions = new Position[](length);
 		for (uint256 i=0; i < length; i++) {
-			_positions[i] = userPositionIds[user].at(i);
+			uint256 id = userPositionIds[user].at(i);
+			Position memory positionWithId = positions[id];
+			positionWithId.positionId = uint32(id);
+			_positions[i] = positionWithId;
 		}
 		return _positions;
 	}
