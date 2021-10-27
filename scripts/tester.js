@@ -70,26 +70,26 @@ async function main() {
   const wethAddress = await router.wethContract();
   const weth = await (await ethers.getContractFactory("WETH")).attach(wethAddress);
 
-  const trading = await (await ethers.getContractFactory("Trading")).attach(await router.tradingContract());
-  const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracleContract());
-  const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasuryContract());
+  const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
+  const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
+  const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
   const usdcAddress = '0xd2983525E903Ef198d5dD0777712EB66680463bc';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPoolContract(wethAddress));
-  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPoolContract(usdcAddress));
+  const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
+  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(usdcAddress));
 
-  const clpWeth = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClpAddress(wethAddress));
-  const clpUsdc = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClpAddress(usdcAddress));
+  const clpWeth = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClp(wethAddress));
+  const clpUsdc = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClp(usdcAddress));
 
-  const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewardsContract(wethAddress));
-  const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewardsContract(usdcAddress));
+  const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(wethAddress));
+  const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
 
-  const capStaking = await (await ethers.getContractFactory("Staking")).attach(await router.capStakingContract());
+  const capStaking = await (await ethers.getContractFactory("Staking")).attach(await router.capPool());
 
-  const capRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewardsContract(usdcAddress));
-  const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewardsContract(usdcAddress));
+  const capRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
+  const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   
   console.log('Contracts set', router.address);
 
@@ -220,7 +220,7 @@ async function main() {
 
   // // claim rewards
 
-  // console.log('router weth rewards contract', await router.getPoolRewardsContract(wethAddress));
+  // console.log('router weth rewards contract', await router.getPoolRewards(wethAddress));
   // console.log('actual weth rewards contract', poolRewardsWETH.address);
   // console.log('staking contract associated', await poolRewardsWETH.staking());
   // console.log('staked supply', formatUnits(await poolWETH.getStakedSupply()));

@@ -42,9 +42,9 @@ contract Oracle {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		trading = IRouter(router).tradingContract();
-		treasury = IRouter(router).treasuryContract();
-		darkOracle = IRouter(router).darkOracleAddress();
+		trading = IRouter(router).trading();
+		treasury = IRouter(router).treasury();
+		darkOracle = IRouter(router).darkOracle();
 	}
 
 	function setParams(

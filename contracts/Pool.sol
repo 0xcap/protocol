@@ -74,9 +74,9 @@ contract Pool {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		trading = IRouter(router).tradingContract();
-		weth = IRouter(router).wethContract();
-		rewards = IRouter(router).getPoolRewardsContract(currency);
+		trading = IRouter(router).trading();
+		weth = IRouter(router).weth();
+		rewards = IRouter(router).getPoolRewards(currency);
 	}
 
 	function setMinStakingTime(uint256 _minStakingTime) external onlyOwner {
@@ -107,7 +107,7 @@ contract Pool {
         uint256 clpAmountToMint = currentBalance == 0 || clpSupply == 0 ? amount : amount * clpSupply / currentBalance;
 
         // mint CLP
-        address clp = IRouter(router).getClpAddress(currency);
+        address clp = IRouter(router).getClp(currency);
         IMintableToken(clp).mint(address(this), clpAmountToMint);
         _stake(clpAmountToMint);
 
@@ -141,7 +141,7 @@ contract Pool {
         require(currencyAmountAfterFee <= availableBalance, "!balance");
 
 		// burn CLP
-		address clp = IRouter(router).getClpAddress(currency);
+		address clp = IRouter(router).getClp(currency);
 		IMintableToken(clp).burn(address(this), amount);
 
 		// transfer token or ETH out
@@ -164,6 +164,7 @@ contract Pool {
 		
 	}
 
+	// TODO: support calls from multiple trading contracts e.g. adding cross margin in the future
 	function creditUserProfit(address destination, uint256 amount) external onlyTrading {
 		
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
@@ -181,7 +182,13 @@ contract Pool {
 			revert("!drawdown");
 		}
 
-		IERC20(currency).safeTransfer(destination, amount);
+		if (currency == weth) { // WETH
+			// Unwrap and send
+			IWETH(currency).withdraw(amount);
+			payable(destination).sendValue(amount);
+		} else {
+			IERC20(currency).safeTransfer(destination, amount);
+		}
 
 	}
 

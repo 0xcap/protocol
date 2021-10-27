@@ -16,8 +16,6 @@ import "./interfaces/IPool.sol";
 import "./interfaces/IReferrals.sol";
 import "./interfaces/IWETH.sol";
 
-// keep everything in one contract
-
 contract Trading {
 
 	using SafeERC20 for IERC20;
@@ -116,8 +114,7 @@ contract Trading {
 	event ClosePosition(
 		uint256 positionId, 
 		address indexed user, 
-		uint256 indexed productId, 
-		Position position,
+		uint256 indexed productId,
 		uint256 price,
 		uint256 margin,
 		uint256 fee, 
@@ -144,10 +141,10 @@ contract Trading {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		treasury = IRouter(router).treasuryContract();
-		oracle = IRouter(router).oracleContract();
-		weth = IRouter(router).wethContract();
-		referrals = IRouter(router).referralsContract();
+		treasury = IRouter(router).treasury();
+		oracle = IRouter(router).oracle();
+		weth = IRouter(router).weth();
+		referrals = IRouter(router).referrals();
 	}
 
 	function setMinMargin(
@@ -189,9 +186,6 @@ contract Trading {
 	}
 
 	// Methods
-
-	// TODO: pre-method that wraps user's ETH for submitNewPosition, close order, add margin? 
-	// TODO: support WETH as currency sent
 
 	// Submit new position (price pending)
 	function submitNewPosition(
@@ -324,9 +318,7 @@ contract Trading {
 		// Refund margin + fee
 		uint256 marginPlusFee = (margin + fee) * 10**10;
 		if (currency == weth) { // WETH
-			// Unwrap and send
-			IWETH(currency).withdraw(marginPlusFee);
-			payable(positionOwner).sendValue(marginPlusFee);
+			_sendETH(positionOwner, marginPlusFee);
 		} else {
 			IERC20(currency).safeTransfer(positionOwner, marginPlusFee);
 		}
@@ -410,19 +402,20 @@ contract Trading {
 
 		position.margin -= uint64(margin);
 
-		if (margin > activeMargin[position.currency]) {
-			activeMargin[position.currency] = 0;
+		address currency = position.currency;
+
+		if (margin > activeMargin[currency]) {
+			activeMargin[currency] = 0;
 		} else {
-			activeMargin[position.currency] -= margin;
+			activeMargin[currency] -= margin;
 		}
 
-		_sendFeeToTreasury(position.owner, position.currency, _closeOrder.fee * 10**10);
+		_sendFeeToTreasury(position.owner, currency, _closeOrder.fee * 10**10);
 
 		emit ClosePosition(
 			_closeOrder.positionId, 
 			position.owner, 
-			position.productId, 
-			position, 
+			position.productId,
 			price, 
 			margin, 
 			_closeOrder.fee,
@@ -432,8 +425,7 @@ contract Trading {
 		);
 
 		address positionOwner = position.owner;
-		address currency = position.currency;
-
+		
 		if (position.margin == 0) {
 			userPositionIds[position.owner].remove(_closeOrder.positionId);
 			delete positions[_closeOrder.positionId];
@@ -443,15 +435,24 @@ contract Trading {
 
 		delete closeOrders[orderId];
 
-		address pool = IRouter(router).getPoolContract(currency);
+		address pool = IRouter(router).getPool(currency);
 
 		if (pnlIsNegative) {
 			IERC20(currency).safeTransfer(pool, pnl * 10**10);
 			if (pnl < margin) {
-				IERC20(currency).safeTransfer(positionOwner, (margin - pnl) * 10**10);
+				if (currency == weth) { // WETH
+					// Unwrap and send
+					_sendETH(positionOwner, (margin - pnl) * 10**10);
+				} else {
+					IERC20(currency).safeTransfer(positionOwner, (margin - pnl) * 10**10);
+				}
 			}
 		} else {
-			IERC20(currency).safeTransfer(positionOwner, margin * 10**10);
+			if (currency == weth) { // WETH
+				_sendETH(positionOwner, margin * 10**10);
+			} else {
+				IERC20(currency).safeTransfer(positionOwner, margin * 10**10);
+			}
 			IPool(pool).creditUserProfit(positionOwner, pnl * 10**10);
 		}
 
@@ -478,8 +479,7 @@ contract Trading {
 		address currency = position.currency;
 		if (currency == weth) { // WETH
 			// Unwrap and send
-			IWETH(currency).withdraw(fee * 10**10);
-			payable(position.owner).sendValue(fee * 10**10);
+			_sendETH(position.owner, fee * 10**10);
 		} else {
 			IERC20(currency).safeTransfer(position.owner, fee * 10**10);
 		}
@@ -499,7 +499,6 @@ contract Trading {
 			positionId, 
 			positionOwner, 
 			position.productId, 
-			position, 
 			position.price, 
 			margin, 
 			0,
@@ -612,7 +611,6 @@ contract Trading {
 					positionId, 
 					position.owner, 
 					position.productId, 
-					position, 
 					price, 
 					margin, 
 					0,
@@ -642,6 +640,12 @@ contract Trading {
 		uint256 margin
 	) internal {
 		require(margin >= minMargin[currency], "!min-margin");
+	}
+
+	// Send ETH from WETH
+	function _sendETH(address to, uint256 amount) internal {
+		IWETH(weth).withdraw(amount);
+		payable(to).sendValue(amount);
 	}
 
 	function _sendFeeToTreasury(address user, address currency, uint256 amount) internal {

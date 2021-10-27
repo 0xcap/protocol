@@ -37,8 +37,8 @@ contract Referrals {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		trading = IRouter(router).tradingContract();
-		treasury = IRouter(router).treasuryContract();
+		trading = IRouter(router).trading();
+		treasury = IRouter(router).treasury();
 	}
 
 	// Methods
@@ -56,6 +56,7 @@ contract Referrals {
 		IERC20(currency).safeTransfer(msg.sender, amount);
 	}
 
+	// TODO: support calls from multiple trading contracts e.g. adding cross margin in the future
 	function setReferrer(address referredUser, address referrer) external onlyTrading {
 		if (referredBy[referredUser] == address(0)) {
 			referredBy[referredUser] = referrer;

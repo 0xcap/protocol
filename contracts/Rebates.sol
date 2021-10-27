@@ -34,7 +34,7 @@ contract Rebates {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		treasury = IRouter(router).treasuryContract();
+		treasury = IRouter(router).treasury();
 	}
 
 	// Methods

@@ -3,15 +3,14 @@ pragma solidity ^0.8.0;
 
 interface IRouter {
 
-    function tradingContract() external view returns (address);
-    function capStakingContract() external view returns (address);
-    function rebatesContract() external view returns (address);
-    function referralsContract() external view returns (address);
-    function oracleContract() external view returns (address);
-    function wethContract() external view returns (address);
-    function clpContract() external view returns (address);
-    function treasuryContract() external view returns (address);
-    function darkOracleAddress() external view returns (address);
+    function trading() external view returns (address);
+    function capPool() external view returns (address);
+    function rebates() external view returns (address);
+    function referrals() external view returns (address);
+    function oracle() external view returns (address);
+    function weth() external view returns (address);
+    function treasury() external view returns (address);
+    function darkOracle() external view returns (address);
     
     function isSupportedCurrency(address currency) external view returns(bool);
 
@@ -19,12 +18,12 @@ interface IRouter {
 
     function currenciesLength() external view returns(uint256);
 
-    function getPoolContract(address currency) external view returns(address);
+    function getPool(address currency) external view returns(address);
 
-    function getClpAddress(address currency) external view returns(address);
+    function getClp(address currency) external view returns(address);
 
-    function getPoolRewardsContract(address currency) external view returns(address);
+    function getPoolRewards(address currency) external view returns(address);
 
-    function getCapRewardsContract(address currency) external view returns(address);
+    function getCapRewards(address currency) external view returns(address);
 
 }

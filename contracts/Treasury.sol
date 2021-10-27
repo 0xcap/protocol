@@ -29,7 +29,7 @@ contract Treasury {
 	address public weth;
 
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private capShare; // currency (eth, usdc, etc.) => bps
+	mapping(address => uint256) private capPoolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private rebateShare; // currency => bps
 	mapping(address => uint256) private referrerShare; // currency => bps
 	mapping(address => uint256) private referredShare; // currency => bps
@@ -46,16 +46,16 @@ contract Treasury {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
-		oracle = IRouter(router).oracleContract();
-		trading = IRouter(router).tradingContract();
-		weth = IRouter(router).wethContract();
+		oracle = IRouter(router).oracle();
+		trading = IRouter(router).trading();
+		weth = IRouter(router).weth();
 	}
 
 	function setPoolShare(address currency, uint256 share) external onlyOwner {
 		poolShare[currency] = share;
 	}
-	function setCapShare(address currency, uint256 share) external onlyOwner {
-		capShare[currency] = share;
+	function setCapPoolShare(address currency, uint256 share) external onlyOwner {
+		capPoolShare[currency] = share;
 	}
 	function setRebateShare(address currency, uint256 share) external onlyOwner {
 		rebateShare[currency] = share;
@@ -69,6 +69,7 @@ contract Treasury {
 
 	// Methods
 
+	// TODO: support calls from multiple trading contracts e.g. adding cross margin in the future
 	function notifyFeeReceived(
 		address user,
 		address currency, 
@@ -76,33 +77,33 @@ contract Treasury {
 	) external onlyTrading {
 
 		// Contracts from Router
-		address poolRewardsContract = IRouter(router).getPoolRewardsContract(currency);
-		address capRewardsContract = IRouter(router).getCapRewardsContract(currency);
-		address rebatesContract = IRouter(router).rebatesContract();
-		address referralsContract = IRouter(router).referralsContract();
+		address poolRewards = IRouter(router).getPoolRewards(currency);
+		address capRewards = IRouter(router).getCapRewards(currency);
+		address rebates = IRouter(router).rebates();
+		address referrals = IRouter(router).referrals();
 
 		// Send poolShare[currency] * amount to pool-currency rewards contract
 		uint256 poolReward = poolShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(poolRewardsContract, poolReward);
-		IRewards(poolRewardsContract).notifyRewardReceived(poolReward);
+		IERC20(currency).safeTransfer(poolRewards, poolReward);
+		IRewards(poolRewards).notifyRewardReceived(poolReward);
 
-		// Send capShare[currency] * amount to cap-currency rewards contract
-		uint256 capReward = capShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(capRewardsContract, capReward);
-		IRewards(capRewardsContract).notifyRewardReceived(capReward);
+		// Send capPoolShare[currency] * amount to cap-currency rewards contract
+		uint256 capReward = capPoolShare[currency] * amount / 10**4;
+		IERC20(currency).safeTransfer(capRewards, capReward);
+		IRewards(capRewards).notifyRewardReceived(capReward);
 
 		// Send rebateShare to rebates contract
 		uint256 rebate = rebateShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(rebatesContract, rebate);
-		IRebates(rebatesContract).notifyRebateReceived(user, currency, rebate);
+		IERC20(currency).safeTransfer(rebates, rebate);
+		IRebates(rebates).notifyRebateReceived(user, currency, rebate);
 
 		// Send referrerShare, referredShare to referrals contract
-		address referredBy = IReferrals(referralsContract).getReferrerOf(user);
+		address referredBy = IReferrals(referrals).getReferrerOf(user);
 		if (referredBy != address(0)) {
 			uint256 referrerReward = referrerShare[currency] * amount / 10**4;
 			uint256 referredReward = referredShare[currency] * amount / 10**4;
-			IERC20(currency).safeTransfer(referralsContract, referrerReward + referredReward);
-			IReferrals(referralsContract).notifyRewardReceived(user, currency, referredReward, referrerReward);
+			IERC20(currency).safeTransfer(referrals, referrerReward + referredReward);
+			IReferrals(referrals).notifyRewardReceived(user, currency, referredReward, referrerReward);
 		}
 
 	}

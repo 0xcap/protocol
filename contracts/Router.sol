@@ -9,14 +9,6 @@ import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IRouter.sol";
 
-/*
-TODO:
-- compile
-- events
-- deploy and test in js
-- client
-*/
-
 contract Router {
 
 	using SafeERC20 for IERC20; 
@@ -26,53 +18,48 @@ contract Router {
 	address public owner;
 	address public trading;
 	address public oracle;
-	address public pool;
-	address public staking;
+	address public capPool;
+	address public treasury;
+	address public rebates;
+	address public referrals;
+	address public darkOracle;
+
+	// Native currency
 	address public weth;
 
 	address[] public currencies;
 
-	mapping(address => address) poolContracts; // currency => contract
-	mapping(address => address) poolRewardsContracts; // currency => contract
-	mapping(address => address) capRewardsContracts; // currency => contract
-	mapping(address => address) clpAddresses; // currency => clp-eth, clp-usdc
-	
-	address public tradingContract;
-	address public capStakingContract;
-	address public rebatesContract;
-	address public referralsContract;
-	address public oracleContract;
-	address public wethContract;
-	address public clpContract;
-	address public treasuryContract;
-	address public darkOracleAddress;
+	mapping(address => address) pools; // currency => contract
+	mapping(address => address) poolRewards; // currency => contract
+	mapping(address => address) capRewards; // currency => contract
+	mapping(address => address) clp; // currency => clp-eth, clp-usdc
 
 	constructor() {
 		owner = msg.sender;
 	}
 
 	function isSupportedCurrency(address currency) external view returns(bool) {
-		return currency != address(0) && poolContracts[currency] != address(0);
+		return currency != address(0) && pools[currency] != address(0);
 	}
 
 	function currenciesLength() external view returns(uint256) {
 		return currencies.length;
 	}
 
-	function getPoolContract(address currency) external view returns(address) {
-		return poolContracts[currency];
+	function getPool(address currency) external view returns(address) {
+		return pools[currency];
 	}
 
-	function getClpAddress(address currency) external view returns(address) {
-		return clpAddresses[currency];
+	function getClp(address currency) external view returns(address) {
+		return clp[currency];
 	}
 
-	function getPoolRewardsContract(address currency) external view returns(address) {
-		return poolRewardsContracts[currency];
+	function getPoolRewards(address currency) external view returns(address) {
+		return poolRewards[currency];
 	}
 
-	function getCapRewardsContract(address currency) external view returns(address) {
-		return capRewardsContracts[currency];
+	function getCapRewards(address currency) external view returns(address) {
+		return capRewards[currency];
 	}
 
 	// Setters
@@ -82,39 +69,39 @@ contract Router {
 	}
 
 	function setContracts(
-		address _tradingContract,
-		address _capStakingContract,
-		address _rebatesContract,
-		address _referralsContract,
-		address _oracleContract,
-		address _wethContract,
-		address _treasuryContract,
-		address _darkOracleAddress
+		address _trading,
+		address _capPool,
+		address _rebates,
+		address _referrals,
+		address _oracle,
+		address _weth,
+		address _treasury,
+		address _darkOracle
 	) external onlyOwner {
-		tradingContract = _tradingContract;
-		capStakingContract = _capStakingContract;
-		rebatesContract = _rebatesContract;
-		referralsContract = _referralsContract;
-		oracleContract = _oracleContract;
-		wethContract = _wethContract;
-		treasuryContract = _treasuryContract;
-		darkOracleAddress = _darkOracleAddress;
+		trading = _trading;
+		capPool = _capPool;
+		rebates = _rebates;
+		referrals = _referrals;
+		oracle = _oracle;
+		weth = _weth;
+		treasury = _treasury;
+		darkOracle = _darkOracle;
 	}
 
-	function setPoolContract(address currency, address _contract) external onlyOwner {
-		poolContracts[currency] = _contract;
+	function setPool(address currency, address _contract) external onlyOwner {
+		pools[currency] = _contract;
 	}
 
-	function setClpAddress(address currency, address _clp) external onlyOwner {
-		clpAddresses[currency] = _clp;
+	function setClp(address currency, address _clp) external onlyOwner {
+		clp[currency] = _clp;
 	}
 
-	function setPoolRewardsContract(address currency, address _contract) external onlyOwner {
-		poolRewardsContracts[currency] = _contract;
+	function setPoolRewards(address currency, address _contract) external onlyOwner {
+		poolRewards[currency] = _contract;
 	}
 
-	function setCapRewardsContract(address currency, address _contract) external onlyOwner {
-		capRewardsContracts[currency] = _contract;
+	function setCapRewards(address currency, address _contract) external onlyOwner {
+		capRewards[currency] = _contract;
 	}
 
 	// From router on the client, you can get the addresses of all the other contracts. No need for methods here
@@ -125,28 +112,10 @@ contract Router {
 		owner = newOwner;
 	}
 
-	function setTrading(address _trading) external onlyOwner {
-		trading = _trading;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
 	// Modifiers
 
 	modifier onlyOwner() {
 		require(msg.sender == owner, "!owner");
-		_;
-	}
-
-	modifier onlyTrading() {
-		require(msg.sender == trading, "!trading");
-		_;
-	}
-
-	modifier onlyOracle() {
-		require(msg.sender == oracle, "!oracle");
 		_;
 	}
 
