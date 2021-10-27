@@ -72,6 +72,7 @@ contract Staking {
 
 	}
 
+	// TODO: not needed
 	function getStakedSupply() external view returns(uint256) {
 		return totalSupply;
 	}
