@@ -3,9 +3,8 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
+import "./libraries/SafeERC20.sol";
+import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
@@ -98,7 +97,7 @@ contract Rewards {
 				IWETH(weth).withdraw(rewardToSend);
 				payable(msg.sender).sendValue(rewardToSend);
 			} else {
-				IERC20(currency).safeTransfer(msg.sender, rewardToSend);
+				_transferOut(currency, msg.sender, rewardToSend);
 			}
 
 			emit CollectedReward(msg.sender, pool, currency, rewardToSend);
@@ -122,6 +121,17 @@ contract Rewards {
 
 		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
 		
+	}
+
+	// Utils
+
+	function _transferOut(address _currency, address to, uint256 _amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(_currency).decimals();
+		if (decimals != 18) {
+			_amount = _amount * (10**decimals) / (10**18);
+		}
+		IERC20(_currency).safeTransfer(to, _amount);
 	}
 
 	modifier onlyOwner() {

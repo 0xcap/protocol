@@ -4,9 +4,9 @@ pragma solidity ^0.8.0;
 //import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
+import "./libraries/SafeERC20.sol";
+import "./libraries/Address.sol";
+
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./interfaces/IRouter.sol";
@@ -215,7 +215,7 @@ contract Trading {
 			require(margin > fee, "!margin-fee");
 			margin -= fee;
 		} else {
-			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin + fee);
+			_transferIn(currency, margin + fee);
 		}
 
 		require(margin > minMargin[currency], "!min-margin");
@@ -305,7 +305,7 @@ contract Trading {
 		if (currency == weth) { // WETH
 			_sendETH(positionOwner, marginPlusFee);
 		} else {
-			IERC20(currency).safeTransfer(positionOwner, marginPlusFee);
+			_transferOut(currency, positionOwner, marginPlusFee);
 		}
 
 	}
@@ -341,7 +341,7 @@ contract Trading {
 			require(msg.value >= fee, "!fee");
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
-			IERC20(currency).safeTransferFrom(msg.sender, address(this), fee);
+			_transferIn(currency, fee);
 		}
 
 		nextCloseOrderId++;
@@ -432,13 +432,13 @@ contract Trading {
 		if (pnl < 0) {
 			{
 				uint256 positivePnl = uint256(-1 * pnl);
-				IERC20(currency).safeTransfer(pool, positivePnl);
+				_transferOut(currency, pool, positivePnl);
 				if (positivePnl < margin) {
 					if (currency == weth) { // WETH
 						// Unwrap and send
 						_sendETH(positionOwner, margin - positivePnl);
 					} else {
-						IERC20(currency).safeTransfer(positionOwner, margin - positivePnl);
+						_transferOut(currency, positionOwner, margin - positivePnl);
 					}
 				}
 			}
@@ -446,7 +446,7 @@ contract Trading {
 			if (currency == weth) { // WETH
 				_sendETH(positionOwner, margin);
 			} else {
-				IERC20(currency).safeTransfer(positionOwner, margin);
+				_transferOut(currency, positionOwner, margin);
 			}
 			IPool(pool).creditUserProfit(positionOwner, uint256(pnl));
 		}
@@ -476,7 +476,7 @@ contract Trading {
 			// Unwrap and send
 			_sendETH(position.owner, fee);
 		} else {
-			IERC20(currency).safeTransfer(position.owner, fee);
+			_transferOut(currency, position.owner, fee);
 		}
 
 	}
@@ -518,7 +518,7 @@ contract Trading {
 			activeMargin[currency] -= margin;
 		}
 
-		IERC20(currency).safeTransfer(positionOwner, margin);
+		_transferOut(currency, positionOwner, margin);
 
 	}
 
@@ -541,7 +541,7 @@ contract Trading {
 			margin = msg.value / 10**10;
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
-			IERC20(currency).safeTransferFrom(msg.sender, address(this), margin);
+			_transferIn(currency, margin);
 		}
 
 		_checkMinMargin(currency, margin);
@@ -642,8 +642,26 @@ contract Trading {
 	}
 
 	function _sendFeeToTreasury(address currency, uint256 amount) internal {
-		IERC20(currency).safeTransfer(treasury, amount);
+		_transferOut(currency, treasury, amount);
 		ITreasury(treasury).notifyFeeReceived(currency, amount);
+	}
+
+	function _transferIn(address _currency, uint256 _amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(_currency).decimals();
+		if (decimals != 18) {
+			_amount = _amount * (10**decimals) / (10**18);
+		}
+		IERC20(_currency).safeTransferFrom(msg.sender, address(this), _amount);
+	}
+
+	function _transferOut(address _currency, address to, uint256 _amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(_currency).decimals();
+		if (decimals != 18) {
+			_amount = _amount * (10**decimals) / (10**18);
+		}
+		IERC20(_currency).safeTransfer(to, _amount);
 	}
 
 	function _wrapETH() internal {

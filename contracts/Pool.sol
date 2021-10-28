@@ -3,9 +3,8 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
+import "./libraries/SafeERC20.sol";
+import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
@@ -37,6 +36,8 @@ contract Pool {
     uint256 public checkpointTimestamp;
 
     address public rewards; // contract
+
+    uint256 public maxCap = 10**7 * 10**18;
 
     mapping(address => uint256) private balances; // account => amount staked
     uint256 public totalSupply;
@@ -79,11 +80,13 @@ contract Pool {
 	function setParams(
 		uint256 _maxDailyDrawdown,
 		uint256 _minDepositTime,
-		uint256 _utilizationMultiplier
+		uint256 _utilizationMultiplier,
+		uint256 _maxCap
 	) external onlyOwner {
 		maxDailyDrawdown = _maxDailyDrawdown;
 		minDepositTime = _minDepositTime;
 		utilizationMultiplier = _utilizationMultiplier;
+		maxCap = _maxCap;
 	}
 
 	// Methods
@@ -99,7 +102,7 @@ contract Pool {
 			amount = msg.value;
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
-			IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
+			_transferIn(currency, amount);
 		}
 
 		require(amount > 0, "!amount");
@@ -159,7 +162,7 @@ contract Pool {
 			IWETH(currency).withdraw(currencyAmountAfterFee);
 			payable(msg.sender).sendValue(currencyAmountAfterFee);
 		} else {
-			IERC20(currency).safeTransfer(msg.sender, currencyAmountAfterFee);
+			_transferOut(currency, msg.sender, currencyAmountAfterFee);
 		}
 
 		emit Withdraw(
@@ -195,7 +198,7 @@ contract Pool {
 			IWETH(currency).withdraw(amount);
 			payable(destination).sendValue(amount);
 		} else {
-			IERC20(currency).safeTransfer(destination, amount);
+			_transferOut(currency, destination, amount);
 		}
 
 	}
@@ -203,6 +206,26 @@ contract Pool {
 	// To receive ETH from WETH
 	fallback() external payable {}
 	receive() external payable {}
+
+	// Utils
+
+	function _transferIn(address _currency, uint256 _amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(_currency).decimals();
+		if (decimals != 18) {
+			_amount = _amount * (10**decimals) / (10**18);
+		}
+		IERC20(_currency).safeTransferFrom(msg.sender, address(this), _amount);
+	}
+
+	function _transferOut(address _currency, address to, uint256 _amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(_currency).decimals();
+		if (decimals != 18) {
+			_amount = _amount * (10**decimals) / (10**18);
+		}
+		IERC20(_currency).safeTransfer(to, _amount);
+	}
 
 	// Getters
 
