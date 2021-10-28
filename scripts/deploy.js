@@ -134,8 +134,8 @@ async function main() {
   await treasury.setPoolShare(usdc.address, 3000);
   console.log("set pool shares for treasury");
 
-  await treasury.setCapShare(weth.address, 2000);
-  await treasury.setCapShare(usdc.address, 2000);
+  await treasury.setCapPoolShare(weth.address, 2000);
+  await treasury.setCapPoolShare(usdc.address, 2000);
   console.log("set Cap shares for treasury");
 
   // Router setup
@@ -148,14 +148,14 @@ async function main() {
     darkOracleAddress
   );
 
-  await router.setPoolContract(weth.address, poolWETH.address);
-  await router.setPoolContract(usdc.address, poolUSDC.address);
+  await router.setPool(weth.address, poolWETH.address);
+  await router.setPool(usdc.address, poolUSDC.address);
 
-  await router.setPoolRewardsContract(weth.address, poolRewardsWETH.address);
-  await router.setPoolRewardsContract(usdc.address, poolRewardsUSDC.address);
+  await router.setPoolRewards(weth.address, poolRewardsWETH.address);
+  await router.setPoolRewards(usdc.address, poolRewardsUSDC.address);
 
-  await router.setCapRewardsContract(weth.address, capRewardsWETH.address);
-  await router.setCapRewardsContract(usdc.address, capRewardsUSDC.address);
+  await router.setCapRewards(weth.address, capRewardsWETH.address);
+  await router.setCapRewards(usdc.address, capRewardsUSDC.address);
   
   console.log("Setup router contracts");
 
@@ -207,7 +207,7 @@ async function main() {
   for (const p of products) {
     await trading.addProduct(p.id, [
       p.feed,
-      parseInt(p.maxLeverage),
+      parseUnits(""+p.maxLeverage),
       parseInt(p.oracleMaxDeviation * 100),
       parseInt(p.fee * 10000),
       parseInt(p.interest * 100),

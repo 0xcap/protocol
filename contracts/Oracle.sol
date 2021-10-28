@@ -8,8 +8,6 @@ import "./interfaces/IOracle.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
-// TODO: support for multiple dark oracle addresses
-
 contract Oracle {
 
 	// Contract dependencies
@@ -56,8 +54,6 @@ contract Oracle {
 	}
 
 	// Methods
-
-	// TODO: dark oracle network needs to be cognizant of settlement times. Too large since position is created, should cancel it
 
 	function settleOrders(
 		uint256[] calldata positionIds,

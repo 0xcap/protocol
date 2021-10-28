@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-//import "hardhat/console.sol";
+import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "./libraries/SafeERC20.sol";
@@ -23,13 +23,11 @@ contract Trading {
 
 	// Structs
 
-	// TODO: review bytes
-
 	// To deactivate product, set maxLeverage to 0
 	struct Product {
 		// 32 bytes
 		address feed; // Chainlink. Can be address(0) for no bounding. 20 bytes
-		uint256 maxLeverage; // 4 bytes. In units eg 100 = 100x
+		uint256 maxLeverage; // 4 bytes
 		uint256 oracleMaxDeviation; // in bps. 2 bytes
 		uint256 liquidationThreshold; // in bps. 8000 = 80%. 2 bytes
 		uint256 fee; // In sbps (10^6). 0.5% = 5000. 0.025% = 250. 2 bytes
@@ -178,12 +176,6 @@ contract Trading {
 
 	// Methods
 
-	// TODO: for amounts, 18 decimals
-
-	// TODO: use int256 with negative for pnl
-
-	// TODO: margin and size for sent positions, for easier fee calculations
-
 	// Submit new position (price pending)
 	function submitNewPosition(
 		address currency,
@@ -243,7 +235,7 @@ contract Trading {
 	// Set price for newly submitted position (oracle)
 	function settleNewPosition(
 		uint256 positionId,
-		uint256 price
+		uint256 price // 8 decimals
 	) external onlyOracle {
 
 		// Check position
@@ -257,7 +249,7 @@ contract Trading {
 		price = _validatePrice(product.feed, product.oracleMaxDeviation, price);
 
 		// Set position price
-		position.price = uint64(price);
+		position.price = price * 10**10;
 
 		// Send fee to treasury
 		address currency = position.currency;
@@ -310,7 +302,6 @@ contract Trading {
 
 	}
 
-	// TODO: should send size to close not margin
 	// Submit order to close a position
 	function submitCloseOrder( 
 		uint256 positionId, 
@@ -338,7 +329,7 @@ contract Trading {
 		uint256 fee = size * product.fee / 10**6;
 
 		if (currency == weth) {
-			require(msg.value >= fee, "!fee");
+			require(msg.value >= fee && msg.value <= fee * 10100 / 10**4, "!fee");
 			IWETH(currency).deposit{value: msg.value}();
 		} else {
 			_transferIn(currency, fee);
@@ -361,7 +352,7 @@ contract Trading {
 	// Closes position at the fetched price (oracle)
 	function settleCloseOrder(
 		uint256 orderId, 
-		uint256 price
+		uint256 price // 8 decimals
 	) external onlyOracle {
 
 		// Check order and params
@@ -379,10 +370,15 @@ contract Trading {
 		}
 
 		Product storage product = products[position.productId];
-		
+			
+		price = price * 10**10;
 		price = _validatePrice(product.feed, product.oracleMaxDeviation, price);
 
+		console.log('price', price, margin);
+
 		int256 pnl = _getPnL(position, price, margin, product.interest);
+
+		console.log('pnl', uint256(pnl));
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(position.margin) * int256(product.liquidationThreshold) / 10**4) {
@@ -401,6 +397,8 @@ contract Trading {
 		}
 
 		_sendFeeToTreasury(currency, _closeOrder.fee);
+		
+		console.log('fee', currency, _closeOrder.fee);
 
 		uint256 leverage = UNIT * position.size / position.margin;
 
@@ -712,7 +710,7 @@ contract Trading {
 		uint8 decimals = AggregatorV3Interface(feed).decimals();
 
 		uint256 feedPrice;
-		if (decimals != 8) {
+		if (decimals != 18) {
 			feedPrice = uint256(price) * 10**8 / 10**decimals;
 		} else {
 			feedPrice = uint256(price);

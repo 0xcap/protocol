@@ -12,8 +12,6 @@ import "./interfaces/IRewards.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IWETH.sol";
 
-// TODO: max cap on pool
-
 contract Pool {
 
 	using SafeERC20 for IERC20; 
@@ -107,6 +105,8 @@ contract Pool {
 
 		require(amount > 0, "!amount");
 
+		require(amount + currentBalance <= maxCap, "!max-cap");
+
 		// So this doesn't return 0 when totalSupply = 0, which can happen with currentBalance > 0 e.g. trader closes losing position before pool is funded, || totalSupply == 0 is added
         uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
 
@@ -130,31 +130,33 @@ contract Pool {
 
 	}
 
-	function withdraw(uint256 amount) external returns(uint256) {
+	function withdraw(uint256 currencyAmount) external returns(uint256) {
 
-		require(amount > 0, "!amount");
-
+		require(currencyAmount > 0, "!amount");
 		require(block.timestamp > lastDeposited[msg.sender] + minDepositTime, "!cooldown");
-		require(amount > 0, "!amount");
 
 		IRewards(rewards).updateRewards(msg.sender);
 
-		require(amount <= balances[msg.sender], "!balance");
-
-		totalSupply -= amount;
-		balances[msg.sender] -= amount;
+		// Determine corresponding CLP amount
 
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		require(currentBalance > 0 && totalSupply > 0, "!empty");
+
 		uint256 utlization = getUtlization();
 		require(utlization < 10**4, "!utilization");
 		
 		uint256 availableBalance = currentBalance * (10**4 - utlization) / 10**4;
 
-		// Amount of currency (weth, usdc, etc) to send user
-		uint256 currencyAmount = amount * currentBalance / totalSupply;
-        uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
+		uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
+		require(currencyAmountAfterFee <= availableBalance, "!available-balance");
 
-        require(currencyAmountAfterFee <= availableBalance, "!balance");
+		// CLP amount
+		uint256 amount = currencyAmount * totalSupply / currentBalance;
+
+		require(amount <= balances[msg.sender], "!clp-balance");
+
+		totalSupply -= amount;
+		balances[msg.sender] -= amount;
 
 		// transfer token or ETH out
 		if (currency == weth) { // WETH

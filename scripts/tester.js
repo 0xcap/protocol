@@ -18,17 +18,18 @@ const formatUnits = function (number, units) {
 
 const formatPosition = (p) => {
 
-  if (!p || !p.margin || p.margin.toNumber() == 0) return;
+  if (!p || !p.margin || p.margin.toString() * 1 == 0) return;
 
   return {
-    productId: p.productId,
-    leverage: p.leverage.toNumber(),
-    price: p.price.toNumber(),
-    margin: p.margin.toNumber(),
-    fee: p.fee.toNumber(),
+    closeOrderId: p.closeOrderId.toString(),
+    productId: p.productId.toString(),
+    size: p.size.toString(),
+    price: p.price.toString(),
+    margin: p.margin.toString(),
+    fee: p.fee.toString(),
     owner: p.owner,
     currency: p.currency,
-    timestamp: p.timestamp.toNumber(),
+    timestamp: p.timestamp.toString(),
     isLong: p.isLong
   };
 
@@ -36,14 +37,14 @@ const formatPosition = (p) => {
 
 const formatOrder = (o) => {
 
-  if (!o || !o.margin || o.margin.toNumber() == 0) return;
+  if (!o || !o.margin || o.margin.toString() * 1 == 0) return;
 
   return {
-    positionId: o.positionId,
-    productId: o.productId,
-    margin: o.margin.toNumber(),
-    fee: p.fee.toNumber(),
-    timestamp: o.timestamp.toNumber(),
+    positionId: o.positionId.toString(),
+    productId: o.productId.toString(),
+    margin: o.margin.toString(),
+    fee: o.fee.toString(),
+    timestamp: o.timestamp.toString(),
     isLong: o.isLong
   };
 
@@ -64,17 +65,17 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x0462Bc7390a33C8BB748d5c2ad76E93690A365c5';
+  const routerAddress = '0x1D3b68fBD686e06Fbda1cb6cAF0C8DA558FCC3A0';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
-  const wethAddress = await router.wethContract();
+  const wethAddress = await router.weth();
   const weth = await (await ethers.getContractFactory("WETH")).attach(wethAddress);
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xd2983525E903Ef198d5dD0777712EB66680463bc';
+  const usdcAddress = '0x74FeFc9b47aAea34240D8e015D7eA4201F00cFA4';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -83,38 +84,45 @@ async function main() {
   const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(wethAddress));
   const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
 
-  const capStaking = await (await ethers.getContractFactory("Staking")).attach(await router.capPool());
+  const capPool = await (await ethers.getContractFactory("PoolCAP")).attach(await router.capPool());
 
   const capRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   
   console.log('Contracts set', router.address);
 
-  
-  // console.log('Treasury balance1', formatUnits(await provider.getBalance(treasuryAddress)));
-  // await treasury.creditVault({value: parseUnits("2")});
-  // console.log('Treasury balance2', formatUnits(await provider.getBalance(treasuryAddress)));
-
   let tx, receipt;
 
-  // get product
-  //console.log('ETH-USD', await trading.getProduct(1));
+  // // get product
+  // console.log('ETH-USD');
+  // const product = await trading.getProduct(1);
+
+  // // Update product
+  // await trading.updateProduct(1, [
+  //   product[0],
+  //   parseUnits("50"),
+  //   product[2],
+  //   product[3],
+  //   product[4],
+  //   product[5]
+  // ]);
+  // console.log('Updated ETH/USD');
   
   // // submit order (ETH)
   // tx = await trading.connect(user).submitNewPosition(
   //   wethAddress, // currency
   //   1, // productId
   //   0, // margin is sent as value for WETH
-  //   parseInt(40 * 10**8), // leverage
+  //   parseUnits("5"), // size
   //   true, // isLong
   //   {value: parseUnits("1")} // margin
   // );
-  // console.log('Submitted order long 1 ETH at 50x (WETH, ETH-USD)');
+  // console.log('Submitted order long 1 ETH margin at 20x (WETH, ETH-USD)');
   // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 87109
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 279690
 
-  // Router dark oracle address
-  // console.log('ro', await router.darkOracleAddress());
+  // // Router dark oracle address
+  // console.log('ro', await router.darkOracle());
   // console.log('oo', await oracle.darkOracle());
 
   // Check weth balance
@@ -122,17 +130,20 @@ async function main() {
   // console.log('Trading contract balance (WETH)', formatUnits(await weth.balanceOf(trading.address)));
 
   // const posId = await trading.nextPositionId();
-  // console.log('Position', posId, formatPosition((await trading.getPositions([posId]))[0]));
+  // console.log('Position', posId.toString(), formatPosition((await trading.getPositions([posId]))[0]));
   
   // // submit partial close order
   // tx = await trading.connect(user).submitCloseOrder(
   //   posId, // position id
-  //   parseUnits("0.3", 8), // margin to close
-  //   {value: parseUnits("0.03")} // fee - to be calculated correctly. can be anything above the expected amount
+  //   parseUnits("1"), // size to close
+  //   {value: parseUnits("0.0016")} // fee - to be calculated correctly. can be anything above the expected amount
   // );
-  // console.log('Submitted close order for 0.3 ETH on position ', posId);
+  // console.log('Submitted close order for 1 ETH on position ', posId);
   // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 65222
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 235604
+
+  // const closeId = await trading.nextCloseOrderId();
+  // console.log('Close Order', closeId.toString(), formatOrder((await trading.getCloseOrders([closeId]))[0]));
 
   // // submit rest of close order (full)
   // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.936", 8), {value: parseUnits("0.1")});
@@ -147,34 +158,34 @@ async function main() {
   // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 28987
 
 
-  // Treasury balance
-  console.log('Treasury weth balance', formatUnits(await weth.balanceOf(treasury.address)));
-  console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
+  // // Treasury balance
+  // console.log('Treasury weth balance', formatUnits(await weth.balanceOf(treasury.address)));
+  // console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
 
-  // Pool: stake, unstake, claim rewards
+  // // Pool: stake, unstake, claim rewards
 
   // console.log('weth', await poolWETH.weth());
   // console.log('balance', formatUnits(await weth.balanceOf(poolWETH.address)));
 
   // // stake ETH
 
-  // console.log('Staking 1 ETH in WETH pool');
+  // console.log('Depositing 1 ETH in WETH pool');
   
-  // await poolWETH.connect(user).mintAndStakeCLP(
+  // await poolWETH.connect(user).deposit(
   //   0, 
-  //   {value: parseUnits("1.5")}
+  //   {value: parseUnits("1")}
   // );
-  // console.log('Staked', formatUnits(await poolWETH.getStakedBalance(user.address)), formatUnits(await poolWETH.getStakedSupply()));
+  // console.log('Deposited', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
 
   // // stake ETH (owner)
 
-  // console.log('Staking 2 ETH from another user in WETH pool');
+  // console.log('Depositing 2 ETH from another user in WETH pool');
   
-  // await poolWETH.mintAndStakeCLP(
+  // await poolWETH.deposit(
   //   0, 
   //   {value: parseUnits("2")}
   // );
-  // console.log('Staked', formatUnits(await poolWETH.getStakedBalance(owner.address)), formatUnits(await poolWETH.getStakedSupply()));
+  // console.log('Deposited', formatUnits(await poolWETH.getBalance(owner.address)), formatUnits(await poolWETH.totalSupply()));
 
   // // stake USDC
 
@@ -190,41 +201,41 @@ async function main() {
   // console.log('supply', formatUnits(await poolUSDC.clpSupply()));
   // console.log('balance', formatUnits(await usdc.balanceOf(user.address)));
 
-  // unstake ETH
+  // // withdraw ETH
 
   // console.log('Pool weth address', poolWETH.address);
 
-  // await poolWETH.setMinStakingTime(0);
+  // await poolWETH.setParams(3000, 0, 0, "10000000000000000000000000");
   
   // console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
   // console.log('Pool usdc balance', formatUnits(await usdc.balanceOf(poolUSDC.address)));
 
-  // console.log('User staked CLP-ETH balance', formatUnits(await poolWETH.getStakedBalance(user.address)));
-  // console.log('User staked CLP-USDC balance', formatUnits(await poolUSDC.getStakedBalance(user.address)));
+  // console.log('User staked CLP-ETH balance', formatUnits(await poolWETH.getBalance(user.address)));
+  // console.log('User staked CLP-USDC balance', formatUnits(await poolUSDC.getBalance(user.address)));
 
-  // // console.log('Owner staked CLP-ETH balance', formatUnits(await poolWETH.getStakedBalance(owner.address)));
-  // // console.log('Owner staked CLP-USDC balance', formatUnits(await poolUSDC.getStakedBalance(owner.address)));
+  // console.log('Owner staked CLP-ETH balance', formatUnits(await poolWETH.getBalance(owner.address)));
+  // console.log('Owner staked CLP-USDC balance', formatUnits(await poolUSDC.getBalance(owner.address)));
 
-  // console.log('Unstaking 1 CLP from WETH pool');
+  // console.log('Withdrawing 0.4 ETH pool');
 
-  // await poolWETH.connect(user).unstakeAndBurnCLP(parseUnits("1"));
+  // await poolWETH.connect(user).withdraw(parseUnits("0.4"));
   
-  console.log('Staked', formatUnits(await poolWETH.getStakedBalance(user.address)), formatUnits(await poolWETH.getStakedSupply()));
+  // console.log('Withdraw', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
 
-  // // claim rewards
+  // claim rewards
 
-  // console.log('router weth rewards contract', await router.getPoolRewards(wethAddress));
-  // console.log('actual weth rewards contract', poolRewardsWETH.address);
-  // console.log('staking contract associated', await poolRewardsWETH.staking());
-  // console.log('staked supply', formatUnits(await poolWETH.getStakedSupply()));
+  console.log('router weth rewards contract', await router.getPoolRewards(wethAddress));
+  console.log('actual weth rewards contract', poolRewardsWETH.address);
+  console.log('staking contract associated', await poolRewardsWETH.pool());
+  console.log('staked supply', formatUnits(await poolWETH.totalSupply()));
 
-  // console.log('update rewards weth');
-  // await poolRewardsWETH.updateRewards(user.address);
+  console.log('update rewards weth');
+  await poolRewardsWETH.updateRewards(user.address);
   
-  // console.log('rewards contract weth', formatUnits(await weth.balanceOf(poolRewardsWETH.address)));
-  // console.log('pendingReward weth', formatUnits(await poolRewardsWETH.pendingReward()));
-  // console.log('cumulativeRewardPerTokenStored weth', formatUnits(await poolRewardsWETH.cumulativeRewardPerTokenStored()));
-  // console.log('claimable reward weth', formatUnits(await poolRewardsWETH.getClaimableReward()));
+  console.log('rewards contract weth', formatUnits(await weth.balanceOf(poolRewardsWETH.address)));
+  console.log('pendingReward weth', formatUnits(await poolRewardsWETH.pendingReward()));
+  console.log('cumulativeRewardPerTokenStored weth', formatUnits(await poolRewardsWETH.cumulativeRewardPerTokenStored()));
+  console.log('claimable reward weth', formatUnits(await poolRewardsWETH.getClaimableReward()));
 
   // CAP: stake, unstake, claim rewards
 
