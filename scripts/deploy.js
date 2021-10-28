@@ -74,12 +74,6 @@ async function main() {
   await treasury.deployed();
   console.log("Treasury deployed to:", treasury.address);
 
-  // Referrals
-  const Referrals = await hre.ethers.getContractFactory("Referrals");
-  const referrals = await Referrals.deploy();
-  await referrals.deployed();
-  console.log("Referrals deployed to:", referrals.address);
-
   // WETH, CAP, USDC mock tokens (local only)
   const WETH = await hre.ethers.getContractFactory("WETH");
   const weth = await WETH.deploy();
@@ -111,20 +105,6 @@ async function main() {
   const poolUSDC = await Pool.deploy(usdc.address);
   await poolUSDC.deployed();
   console.log("poolUSDC deployed to:", poolUSDC.address);
-
-  // CLPs
-  const MintableToken = await hre.ethers.getContractFactory("MintableToken");
-
-  const clpWeth = await MintableToken.deploy("CLP-WETH", "CLP-WETH");
-  await clpWeth.deployed();
-  console.log("clpWeth deployed to:", clpWeth.address);
-  // Set pool as minter
-  await clpWeth.setMinter(poolWETH.address);
-
-  const clpUsdc = await MintableToken.deploy("CLP-USDC", "CLP-USDC");
-  await clpUsdc.deployed();
-  console.log("clpUsdc deployed to:", clpUsdc.address);
-  await clpUsdc.setMinter(poolUSDC.address);
   
   // Rewards
 
@@ -158,16 +138,10 @@ async function main() {
   await treasury.setCapShare(usdc.address, 2000);
   console.log("set Cap shares for treasury");
 
-  await treasury.setReferrerShare(weth.address, 1000);
-  await treasury.setReferrerShare(usdc.address, 1000);
-  console.log("set referrer shares for treasury");
-
-
   // Router setup
   await router.setContracts(
     trading.address,
     poolCAP.address,
-    referrals.address,
     oracle.address,
     weth.address,
     treasury.address,
@@ -176,9 +150,6 @@ async function main() {
 
   await router.setPoolContract(weth.address, poolWETH.address);
   await router.setPoolContract(usdc.address, poolUSDC.address);
-
-  await router.setClpAddress(weth.address, clpWeth.address);
-  await router.setClpAddress(usdc.address, clpUsdc.address);
 
   await router.setPoolRewardsContract(weth.address, poolRewardsWETH.address);
   await router.setPoolRewardsContract(usdc.address, poolRewardsUSDC.address);
@@ -195,7 +166,6 @@ async function main() {
   await trading.setRouter(router.address);
   await treasury.setRouter(router.address);
   await poolCAP.setRouter(router.address);
-  await referrals.setRouter(router.address);
   await oracle.setRouter(router.address);
   await poolWETH.setRouter(router.address);
   await poolUSDC.setRouter(router.address);

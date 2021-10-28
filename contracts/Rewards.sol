@@ -12,6 +12,7 @@ import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IRewards.sol";
 import "./interfaces/IPool.sol";
+import "./interfaces/IWETH.sol";
 
 contract Rewards {
 
@@ -24,6 +25,7 @@ contract Rewards {
 
 	address public pool; // pool contract associated with these rewards
 	address public currency; // rewards paid in this
+	address public weth;
 
 	uint256 public cumulativeRewardPerTokenStored;
 	uint256 public pendingReward;
@@ -53,6 +55,7 @@ contract Rewards {
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
 		treasury = IRouter(router).treasury();
+		weth = IRouter(router).weth();
 	}
 
 	// Methods
@@ -71,7 +74,7 @@ contract Rewards {
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
-		uint256 accountStakedBalance = IPool(pool).getStakedBalance(account);
+		uint256 accountStakedBalance = IPool(pool).getBalance(account);
 
 		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 
@@ -81,8 +84,6 @@ contract Rewards {
 
 	}
 
-	// TODO: send reward as ETH not weth
-
 	function collectReward() external {
 
 		updateRewards(msg.sender);
@@ -91,7 +92,15 @@ contract Rewards {
 		claimableReward[msg.sender] = 0;
 
 		if (rewardToSend > 0) {
-			IERC20(currency).safeTransfer(msg.sender, rewardToSend);
+
+			if (currency == weth) { // WETH
+				// Unwrap and send
+				IWETH(weth).withdraw(rewardToSend);
+				payable(msg.sender).sendValue(rewardToSend);
+			} else {
+				IERC20(currency).safeTransfer(msg.sender, rewardToSend);
+			}
+
 			emit CollectedReward(msg.sender, pool, currency, rewardToSend);
 		}
 
@@ -109,7 +118,7 @@ contract Rewards {
 
 		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
 
-		uint256 accountStakedBalance = IPool(pool).getStakedBalance(msg.sender);
+		uint256 accountStakedBalance = IPool(pool).getBalance(msg.sender);
 
 		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
 		

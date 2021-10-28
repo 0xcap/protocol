@@ -25,6 +25,16 @@ contract PoolCAP {
 	mapping(address => uint256) private balances; // account => amount staked
 	uint256 public totalSupply;
 
+	// Events
+    event Deposit(
+    	address indexed user, 
+    	uint256 amount
+    );
+    event Withdraw(
+    	address indexed user,
+    	uint256 amount
+    );
+
 	constructor(address _cap) {
 		owner = msg.sender;
 		cap = _cap;
@@ -40,7 +50,7 @@ contract PoolCAP {
 		router = _router;
 	}
 
-	function stake(uint256 amount) external {
+	function deposit(uint256 amount) external {
 
 		require(amount > 0, "!amount");
 
@@ -49,12 +59,17 @@ contract PoolCAP {
 		totalSupply += amount;
 		balances[msg.sender] += amount;
 
-		// Owner needs to approve this contract to spend their CLP
+		// Owner needs to approve this contract to spend their CAP
 		IERC20(cap).safeTransferFrom(msg.sender, address(this), amount);
+
+		emit Deposit(
+			msg.sender,
+			amount
+		);
 
 	}
 
-	function unstake(uint256 amount) external {
+	function withdraw(uint256 amount) external {
 		
 		require(amount > 0, "!amount");
 
@@ -66,6 +81,11 @@ contract PoolCAP {
 		balances[msg.sender] -= amount;
 
 		IERC20(cap).safeTransfer(msg.sender, amount);
+
+		emit Withdraw(
+			msg.sender,
+			amount
+		);
 
 	}
 

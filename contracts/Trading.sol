@@ -13,7 +13,6 @@ import "./interfaces/IRouter.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/IPool.sol";
-import "./interfaces/IReferrals.sol";
 import "./interfaces/IWETH.sol";
 
 contract Trading {
@@ -72,7 +71,6 @@ contract Trading {
 	address public weth;
 	address public treasury;
 	address public oracle;
-	address public referrals;
 
 	// Variables
 
@@ -138,7 +136,6 @@ contract Trading {
 		treasury = IRouter(router).treasury();
 		oracle = IRouter(router).oracle();
 		weth = IRouter(router).weth();
-		referrals = IRouter(router).referrals();
 	}
 
 	function setMinMargin(
@@ -193,8 +190,7 @@ contract Trading {
 		uint256 productId,
 		uint256 margin, // net margin
 		uint256 size,
-		bool isLong,
-		address referrer
+		bool isLong
 	) external payable {
 
 		if (currency == weth) { // User is sending ETH
@@ -242,11 +238,6 @@ contract Trading {
 
 		userPositionIds[msg.sender].add(nextPositionId);
 
-		// Set referrer
-		if (referrer != address(0) && referrer != msg.sender) {
-			IReferrals(referrals).setReferrer(msg.sender, referrer);
-		}
-
 	}
 
 	// Set price for newly submitted position (oracle)
@@ -270,7 +261,7 @@ contract Trading {
 
 		// Send fee to treasury
 		address currency = position.currency;
-		_sendFeeToTreasury(position.owner, currency, position.fee);
+		_sendFeeToTreasury(currency, position.fee);
 
 		activeMargin[currency] += position.margin;
 
@@ -409,7 +400,7 @@ contract Trading {
 			activeMargin[currency] -= margin;
 		}
 
-		_sendFeeToTreasury(position.owner, currency, _closeOrder.fee);
+		_sendFeeToTreasury(currency, _closeOrder.fee);
 
 		uint256 leverage = UNIT * position.size / position.margin;
 
@@ -600,7 +591,7 @@ contract Trading {
 
 			if (pnl <= -1 * int256(margin) * int256(product.liquidationThreshold) / 10**4) {
 
-				_sendFeeToTreasury(position.owner, position.currency, margin);
+				_sendFeeToTreasury(position.currency, margin);
 
 				if (margin > activeMargin[position.currency]) {
 					activeMargin[position.currency] = 0;
@@ -650,9 +641,9 @@ contract Trading {
 		payable(to).sendValue(amount);
 	}
 
-	function _sendFeeToTreasury(address user, address currency, uint256 amount) internal {
+	function _sendFeeToTreasury(address currency, uint256 amount) internal {
 		IERC20(currency).safeTransfer(treasury, amount);
-		ITreasury(treasury).notifyFeeReceived(user, currency, amount);
+		ITreasury(treasury).notifyFeeReceived(currency, amount);
 	}
 
 	function _wrapETH() internal {

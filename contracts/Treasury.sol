@@ -10,7 +10,6 @@ import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
 import "./interfaces/IRewards.sol";
-import "./interfaces/IReferrals.sol";
 import "./interfaces/IWETH.sol";
 
 // This contract should be relatively upgradeable = no important state
@@ -29,7 +28,6 @@ contract Treasury {
 
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capPoolShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private referrerShare; // currency => bps
 
 	constructor() {
 		owner = msg.sender;
@@ -54,15 +52,10 @@ contract Treasury {
 	function setCapPoolShare(address currency, uint256 share) external onlyOwner {
 		capPoolShare[currency] = share;
 	}
-	function setReferrerShare(address currency, uint256 share) external onlyOwner {
-		referrerShare[currency] = share;
-	}
 
 	// Methods
 
-	// TODO: support calls from multiple trading contracts e.g. adding cross margin in the future
 	function notifyFeeReceived(
-		address user,
 		address currency, 
 		uint256 amount
 	) external onlyTrading {
@@ -70,7 +63,6 @@ contract Treasury {
 		// Contracts from Router
 		address poolRewards = IRouter(router).getPoolRewards(currency);
 		address capRewards = IRouter(router).getCapRewards(currency);
-		address referrals = IRouter(router).referrals();
 
 		// Send poolShare[currency] * amount to pool-currency rewards contract
 		uint256 poolReward = poolShare[currency] * amount / 10**4;
@@ -81,14 +73,6 @@ contract Treasury {
 		uint256 capReward = capPoolShare[currency] * amount / 10**4;
 		IERC20(currency).safeTransfer(capRewards, capReward);
 		IRewards(capRewards).notifyRewardReceived(capReward);
-
-		// Send referrerShare to referrals contract
-		address referredBy = IReferrals(referrals).getReferrerOf(user);
-		if (referredBy != address(0)) {
-			uint256 referrerReward = referrerShare[currency] * amount / 10**4;
-			IERC20(currency).safeTransfer(referrals, referrerReward);
-			IReferrals(referrals).notifyRewardReceived(user, currency, referrerReward);
-		}
 
 	}
 
@@ -111,6 +95,15 @@ contract Treasury {
 	// To receive ETH from WETH
 	fallback() external payable {}
 	receive() external payable {}
+
+	// Getters
+
+	function getPoolShare(address currency) external view returns(uint256) {
+		return poolShare[currency];
+	}
+	function getCapShare(address currency) external view returns(uint256) {
+		return capPoolShare[currency];
+	}
 
 	// Modifiers
 

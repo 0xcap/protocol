@@ -20,7 +20,6 @@ contract Router {
 	address public oracle;
 	address public capPool;
 	address public treasury;
-	address public referrals;
 	address public darkOracle;
 
 	// Native currency
@@ -31,7 +30,6 @@ contract Router {
 	mapping(address => address) pools; // currency => contract
 	mapping(address => address) poolRewards; // currency => contract
 	mapping(address => address) capRewards; // currency => contract
-	mapping(address => address) clp; // currency => clp-eth, clp-usdc
 
 	constructor() {
 		owner = msg.sender;
@@ -47,10 +45,6 @@ contract Router {
 
 	function getPool(address currency) external view returns(address) {
 		return pools[currency];
-	}
-
-	function getClp(address currency) external view returns(address) {
-		return clp[currency];
 	}
 
 	function getPoolRewards(address currency) external view returns(address) {
@@ -70,7 +64,6 @@ contract Router {
 	function setContracts(
 		address _trading,
 		address _capPool,
-		address _referrals,
 		address _oracle,
 		address _weth,
 		address _treasury,
@@ -78,7 +71,6 @@ contract Router {
 	) external onlyOwner {
 		trading = _trading;
 		capPool = _capPool;
-		referrals = _referrals;
 		oracle = _oracle;
 		weth = _weth;
 		treasury = _treasury;
@@ -87,10 +79,6 @@ contract Router {
 
 	function setPool(address currency, address _contract) external onlyOwner {
 		pools[currency] = _contract;
-	}
-
-	function setClp(address currency, address _clp) external onlyOwner {
-		clp[currency] = _clp;
 	}
 
 	function setPoolRewards(address currency, address _contract) external onlyOwner {

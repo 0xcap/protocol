@@ -80,9 +80,6 @@ async function main() {
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
   const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(usdcAddress));
 
-  const clpWeth = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClp(wethAddress));
-  const clpUsdc = await (await ethers.getContractFactory("MintableToken")).attach(await router.getClp(usdcAddress));
-
   const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(wethAddress));
   const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
 
@@ -110,7 +107,6 @@ async function main() {
   //   0, // margin is sent as value for WETH
   //   parseInt(40 * 10**8), // leverage
   //   true, // isLong
-  //   ADDRESS_ZERO, // referrer
   //   {value: parseUnits("1")} // margin
   // );
   // console.log('Submitted order long 1 ETH at 50x (WETH, ETH-USD)');
@@ -202,9 +198,6 @@ async function main() {
   
   // console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
   // console.log('Pool usdc balance', formatUnits(await usdc.balanceOf(poolUSDC.address)));
-
-  // console.log('Pool CLP-ETH balance', formatUnits(await clpWeth.balanceOf(poolWETH.address)));
-  // console.log('Pool CLP-USDC balance', formatUnits(await clpUsdc.balanceOf(poolUSDC.address)));
 
   // console.log('User staked CLP-ETH balance', formatUnits(await poolWETH.getStakedBalance(user.address)));
   // console.log('User staked CLP-USDC balance', formatUnits(await poolUSDC.getStakedBalance(user.address)));
