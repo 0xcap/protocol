@@ -11,7 +11,7 @@ import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IRewards.sol";
-import "./interfaces/IStaking.sol";
+import "./interfaces/IPool.sol";
 
 contract Rewards {
 
@@ -22,7 +22,7 @@ contract Rewards {
 	address public router;
 	address public treasury;
 
-	address public staking; // staking contract associated with these rewards
+	address public pool; // pool contract associated with these rewards
 	address public currency; // rewards paid in this
 
 	uint256 public cumulativeRewardPerTokenStored;
@@ -33,14 +33,14 @@ contract Rewards {
 
 	event CollectedReward(
 		address user,
-		address stakingContract,
+		address poolContract,
 		address currency,
 		uint256 amount
 	);
 
-	constructor(address _staking, address _currency) {
+	constructor(address _pool, address _currency) {
 		owner = msg.sender;
-		staking = _staking;
+		pool = _pool;
 		currency = _currency;
 	}
 
@@ -63,7 +63,7 @@ contract Rewards {
 
 	function updateRewards(address account) public {
 
-		uint256 supply = IStaking(staking).getStakedSupply();
+		uint256 supply = IPool(pool).totalSupply();
 
 		if (supply == 0) return;
 
@@ -71,7 +71,7 @@ contract Rewards {
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
-		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(account);
+		uint256 accountStakedBalance = IPool(pool).getStakedBalance(account);
 
 		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
 
@@ -80,6 +80,8 @@ contract Rewards {
 		pendingReward = 0;
 
 	}
+
+	// TODO: send reward as ETH not weth
 
 	function collectReward() external {
 
@@ -90,7 +92,7 @@ contract Rewards {
 
 		if (rewardToSend > 0) {
 			IERC20(currency).safeTransfer(msg.sender, rewardToSend);
-			emit CollectedReward(msg.sender, staking, currency, rewardToSend);
+			emit CollectedReward(msg.sender, pool, currency, rewardToSend);
 		}
 
 	}
@@ -99,7 +101,7 @@ contract Rewards {
 
 		uint256 currentClaimableReward = claimableReward[msg.sender];
 
-		uint256 supply = IStaking(staking).getStakedSupply();
+		uint256 supply = IPool(pool).totalSupply();
 
 		if (supply == 0) return 0;
 
@@ -107,7 +109,7 @@ contract Rewards {
 
 		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
 
-		uint256 accountStakedBalance = IStaking(staking).getStakedBalance(msg.sender);
+		uint256 accountStakedBalance = IPool(pool).getStakedBalance(msg.sender);
 
 		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
 		

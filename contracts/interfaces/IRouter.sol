@@ -5,7 +5,6 @@ interface IRouter {
 
     function trading() external view returns (address);
     function capPool() external view returns (address);
-    function rebates() external view returns (address);
     function referrals() external view returns (address);
     function oracle() external view returns (address);
     function weth() external view returns (address);

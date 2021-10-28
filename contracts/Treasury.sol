@@ -10,7 +10,6 @@ import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
 import "./interfaces/IRewards.sol";
-import "./interfaces/IRebates.sol";
 import "./interfaces/IReferrals.sol";
 import "./interfaces/IWETH.sol";
 
@@ -30,9 +29,7 @@ contract Treasury {
 
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capPoolShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private rebateShare; // currency => bps
 	mapping(address => uint256) private referrerShare; // currency => bps
-	mapping(address => uint256) private referredShare; // currency => bps
 
 	constructor() {
 		owner = msg.sender;
@@ -57,14 +54,8 @@ contract Treasury {
 	function setCapPoolShare(address currency, uint256 share) external onlyOwner {
 		capPoolShare[currency] = share;
 	}
-	function setRebateShare(address currency, uint256 share) external onlyOwner {
-		rebateShare[currency] = share;
-	}
 	function setReferrerShare(address currency, uint256 share) external onlyOwner {
 		referrerShare[currency] = share;
-	}
-	function setReferredShare(address currency, uint256 share) external onlyOwner {
-		referredShare[currency] = share;
 	}
 
 	// Methods
@@ -79,7 +70,6 @@ contract Treasury {
 		// Contracts from Router
 		address poolRewards = IRouter(router).getPoolRewards(currency);
 		address capRewards = IRouter(router).getCapRewards(currency);
-		address rebates = IRouter(router).rebates();
 		address referrals = IRouter(router).referrals();
 
 		// Send poolShare[currency] * amount to pool-currency rewards contract
@@ -92,18 +82,12 @@ contract Treasury {
 		IERC20(currency).safeTransfer(capRewards, capReward);
 		IRewards(capRewards).notifyRewardReceived(capReward);
 
-		// Send rebateShare to rebates contract
-		uint256 rebate = rebateShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(rebates, rebate);
-		IRebates(rebates).notifyRebateReceived(user, currency, rebate);
-
-		// Send referrerShare, referredShare to referrals contract
+		// Send referrerShare to referrals contract
 		address referredBy = IReferrals(referrals).getReferrerOf(user);
 		if (referredBy != address(0)) {
 			uint256 referrerReward = referrerShare[currency] * amount / 10**4;
-			uint256 referredReward = referredShare[currency] * amount / 10**4;
-			IERC20(currency).safeTransfer(referrals, referrerReward + referredReward);
-			IReferrals(referrals).notifyRewardReceived(user, currency, referredReward, referrerReward);
+			IERC20(currency).safeTransfer(referrals, referrerReward);
+			IReferrals(referrals).notifyRewardReceived(user, currency, referrerReward);
 		}
 
 	}

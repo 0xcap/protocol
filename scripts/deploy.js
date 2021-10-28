@@ -74,12 +74,6 @@ async function main() {
   await treasury.deployed();
   console.log("Treasury deployed to:", treasury.address);
 
-  // Rebates
-  const Rebates = await hre.ethers.getContractFactory("Rebates");
-  const rebates = await Rebates.deploy();
-  await rebates.deployed();
-  console.log("Rebates deployed to:", rebates.address);
-
   // Referrals
   const Referrals = await hre.ethers.getContractFactory("Referrals");
   const referrals = await Referrals.deploy();
@@ -101,11 +95,11 @@ async function main() {
   await usdc.deployed();
   console.log("usdc deployed to:", usdc.address);
 
-  // Staking (for CAP)
-  const Staking = await hre.ethers.getContractFactory("Staking");
-  const staking = await Staking.deploy(cap.address);
-  await staking.deployed();
-  console.log("Staking deployed to:", staking.address);
+  // PoolCAP
+  const PoolCAP = await hre.ethers.getContractFactory("PoolCAP");
+  const poolCAP = await PoolCAP.deploy(cap.address);
+  await poolCAP.deployed();
+  console.log("PoolCAP deployed to:", poolCAP.address);
 
   // Pools (WETH, USDC)
   const Pool = await hre.ethers.getContractFactory("Pool");
@@ -145,12 +139,12 @@ async function main() {
   await poolRewardsUSDC.deployed();
   console.log("poolRewardsUSDC deployed to:", poolRewardsUSDC.address);
 
-  // Rewards for Cap staking
-  const capRewardsWETH = await Rewards.deploy(staking.address, weth.address);
+  // Rewards for Cap
+  const capRewardsWETH = await Rewards.deploy(poolCAP.address, weth.address);
   await capRewardsWETH.deployed();
   console.log("capRewardsWETH deployed to:", capRewardsWETH.address);
 
-  const capRewardsUSDC = await Rewards.deploy(staking.address, usdc.address);
+  const capRewardsUSDC = await Rewards.deploy(poolCAP.address, usdc.address);
   await capRewardsUSDC.deployed();
   console.log("capRewardsUSDC deployed to:", capRewardsUSDC.address);
 
@@ -164,24 +158,15 @@ async function main() {
   await treasury.setCapShare(usdc.address, 2000);
   console.log("set Cap shares for treasury");
 
-  await treasury.setRebateShare(weth.address, 1000);
-  await treasury.setRebateShare(usdc.address, 1000);
-  console.log("set rebate shares for treasury");
-
   await treasury.setReferrerShare(weth.address, 1000);
   await treasury.setReferrerShare(usdc.address, 1000);
   console.log("set referrer shares for treasury");
-
-  await treasury.setReferredShare(weth.address, 1000);
-  await treasury.setReferredShare(usdc.address, 1000);
-  console.log("set referred shares for treasury");
 
 
   // Router setup
   await router.setContracts(
     trading.address,
-    staking.address,
-    rebates.address,
+    poolCAP.address,
     referrals.address,
     oracle.address,
     weth.address,
@@ -209,8 +194,7 @@ async function main() {
   // Link contracts with Router, which also sets their dependent contract addresses
   await trading.setRouter(router.address);
   await treasury.setRouter(router.address);
-  await staking.setRouter(router.address);
-  await rebates.setRouter(router.address);
+  await poolCAP.setRouter(router.address);
   await referrals.setRouter(router.address);
   await oracle.setRouter(router.address);
   await poolWETH.setRouter(router.address);

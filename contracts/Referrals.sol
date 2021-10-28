@@ -43,10 +43,11 @@ contract Referrals {
 
 	// Methods
 
-	function notifyRewardReceived(address referredUser, address currency, uint256 referredReward, uint256 referrerReward) external onlyTreasury {
+	function notifyRewardReceived(address referredUser, address currency, uint256 referrerReward) external onlyTreasury {
 		address referrer = referredBy[referredUser];
-		balances[referredUser][currency] += referredReward;
-		balances[referrer][currency] += referrerReward;	
+		if (referrer != address(0)) {
+			balances[referrer][currency] += referrerReward;	
+		}
 	}
 
 	function claimReward(address currency) external {

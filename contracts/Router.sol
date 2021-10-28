@@ -20,7 +20,6 @@ contract Router {
 	address public oracle;
 	address public capPool;
 	address public treasury;
-	address public rebates;
 	address public referrals;
 	address public darkOracle;
 
@@ -71,7 +70,6 @@ contract Router {
 	function setContracts(
 		address _trading,
 		address _capPool,
-		address _rebates,
 		address _referrals,
 		address _oracle,
 		address _weth,
@@ -80,7 +78,6 @@ contract Router {
 	) external onlyOwner {
 		trading = _trading;
 		capPool = _capPool;
-		rebates = _rebates;
 		referrals = _referrals;
 		oracle = _oracle;
 		weth = _weth;

@@ -42,7 +42,7 @@ contract Pool {
     address public rewards; // contract
 
     mapping(address => uint256) private balances; // account => amount staked
-    uint256 public clpSupply;
+    uint256 public totalSupply;
 
     mapping(address => uint256) lastStaked;
     uint256 public minStakingTime = 1 hours;
@@ -89,6 +89,7 @@ contract Pool {
 
 	// Methods
 
+	//todo: rename to deposit
 	function mintAndStakeCLP(uint256 amount) external payable returns(uint256) {
 
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
@@ -103,8 +104,8 @@ contract Pool {
 
 		require(amount > 0, "!amount");
 
-		// So this doesn't return 0 when clpsupply = 0, which can happen with currentBalance > 0 e.g. trader closes losing position before pool is funded, || clpSupply == 0 is added
-        uint256 clpAmountToMint = currentBalance == 0 || clpSupply == 0 ? amount : amount * clpSupply / currentBalance;
+		// So this doesn't return 0 when totalSupply = 0, which can happen with currentBalance > 0 e.g. trader closes losing position before pool is funded, || totalSupply == 0 is added
+        uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
 
         // mint CLP
         address clp = IRouter(router).getClp(currency);
@@ -135,7 +136,7 @@ contract Pool {
 		uint256 availableBalance = currentBalance * (10**4 - utlization) / 10**4;
 
 		// Amount of currency (weth, usdc, etc) to send user
-		uint256 currencyAmount = amount * currentBalance / clpSupply;
+		uint256 currencyAmount = amount * currentBalance / totalSupply;
         uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
 
         require(currencyAmountAfterFee <= availableBalance, "!balance");
@@ -202,7 +203,7 @@ contract Pool {
 
 		IRewards(rewards).updateRewards(msg.sender);
 
-		clpSupply += amount;
+		totalSupply += amount;
 		balances[msg.sender] += amount;
 
 	}
@@ -216,7 +217,7 @@ contract Pool {
 
 		require(amount <= balances[msg.sender], "!balance");
 
-		clpSupply -= amount;
+		totalSupply -= amount;
 		balances[msg.sender] -= amount;
 
 	}
@@ -231,11 +232,6 @@ contract Pool {
 		uint256 activeMargin = ITrading(trading).getActiveMargin(currency);
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
 		return activeMargin * utilizationMultiplier / currentBalance; // in bps
-	}
-
-	// Todo: NOT NEEDED
-	function getStakedSupply() external view returns(uint256) {
-		return clpSupply;
 	}
 
 	function getStakedBalance(address account) external view returns(uint256) {
