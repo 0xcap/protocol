@@ -93,10 +93,11 @@ async function main() {
 
   let tx, receipt;
 
-  // // get product
-  // console.log('ETH-USD');
-  // const product = await trading.getProduct(1);
-
+  // get product
+  console.log('ETH-USD');
+  const product = await trading.getProduct(1);
+  console.log('product', product);
+  
   // // Update product
   // await trading.updateProduct(1, [
   //   product[0],
@@ -222,20 +223,20 @@ async function main() {
   
   // console.log('Withdraw', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
 
-  // claim rewards
+  // // claim rewards
 
-  console.log('router weth rewards contract', await router.getPoolRewards(wethAddress));
-  console.log('actual weth rewards contract', poolRewardsWETH.address);
-  console.log('staking contract associated', await poolRewardsWETH.pool());
-  console.log('staked supply', formatUnits(await poolWETH.totalSupply()));
+  // console.log('router weth rewards contract', await router.getPoolRewards(wethAddress));
+  // console.log('actual weth rewards contract', poolRewardsWETH.address);
+  // console.log('staking contract associated', await poolRewardsWETH.pool());
+  // console.log('staked supply', formatUnits(await poolWETH.totalSupply()));
 
-  console.log('update rewards weth');
-  await poolRewardsWETH.updateRewards(user.address);
+  // console.log('update rewards weth');
+  // await poolRewardsWETH.updateRewards(user.address);
   
-  console.log('rewards contract weth', formatUnits(await weth.balanceOf(poolRewardsWETH.address)));
-  console.log('pendingReward weth', formatUnits(await poolRewardsWETH.pendingReward()));
-  console.log('cumulativeRewardPerTokenStored weth', formatUnits(await poolRewardsWETH.cumulativeRewardPerTokenStored()));
-  console.log('claimable reward weth', formatUnits(await poolRewardsWETH.getClaimableReward()));
+  // console.log('rewards contract weth', formatUnits(await weth.balanceOf(poolRewardsWETH.address)));
+  // console.log('pendingReward weth', formatUnits(await poolRewardsWETH.pendingReward()));
+  // console.log('cumulativeRewardPerTokenStored weth', formatUnits(await poolRewardsWETH.cumulativeRewardPerTokenStored()));
+  // console.log('claimable reward weth', formatUnits(await poolRewardsWETH.getClaimableReward()));
 
   // CAP: stake, unstake, claim rewards
 

@@ -237,6 +237,12 @@ contract Pool {
 		return activeMargin * utilizationMultiplier / currentBalance; // in bps
 	}
 
+	function getCurrencyBalance(address account) external view returns(uint256) {
+		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		return balances[account] * currentBalance / totalSupply;
+	}
+
+	// In Clp
 	function getBalance(address account) external view returns(uint256) {
 		return balances[account];
 	}

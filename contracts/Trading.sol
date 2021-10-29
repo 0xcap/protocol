@@ -210,7 +210,7 @@ contract Trading {
 			_transferIn(currency, margin + fee);
 		}
 
-		require(margin > minMargin[currency], "!min-margin");
+		require(margin >= minMargin[currency], "!min-margin");
 
 		// Add position
 		nextPositionId++;
@@ -322,7 +322,7 @@ contract Trading {
 		uint256 leverage = UNIT * position.size / position.margin;
 		uint256 margin = UNIT * size / leverage;
 
-		require(margin > minMargin[currency], "!min-margin");
+		require(margin >= minMargin[currency], "!min-margin");
 
 		Product memory product = products[position.productId];
 
@@ -536,13 +536,13 @@ contract Trading {
 
 		if (currency == weth) { // User is sending ETH
 			require(msg.value > 0, "!margin");
-			margin = msg.value / 10**10;
-			IWETH(currency).deposit{value: msg.value}();
+			margin = msg.value;
+			IWETH(currency).deposit{value: margin}();
 		} else {
 			_transferIn(currency, margin);
 		}
 
-		_checkMinMargin(currency, margin);
+		require(margin >= minMargin[currency], "!min-margin");
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
@@ -625,14 +625,6 @@ contract Trading {
 	fallback() external payable {}
 	receive() external payable {}
 
-	// Utils
-
-	function _checkMinMargin(
-		address currency,
-		uint256 margin
-	) internal {
-	}
-
 	// Send ETH from WETH
 	function _sendETH(address to, uint256 amount) internal {
 		IWETH(weth).withdraw(amount);
@@ -645,6 +637,7 @@ contract Trading {
 	}
 
 	function _transferIn(address _currency, uint256 _amount) internal {
+		if (_amount == 0) return;
 		// adjust decimals
 		uint256 decimals = IERC20(_currency).decimals();
 		if (decimals != 18) {
