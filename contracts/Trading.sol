@@ -57,7 +57,7 @@ contract Trading {
 	struct Order {
 		uint256 positionId; // 4 bytes
 		uint256 productId; // 2 bytes
-		uint256 margin; // 8 bytes
+		uint256 size; // 8 bytes
 		uint256 fee; // 8 bytes
 		uint256 timestamp; // 9 bytes
 		bool isLong; // 1 byte (position's isLong)
@@ -319,11 +319,6 @@ contract Trading {
 
 		address currency = position.currency;
 
-		uint256 leverage = UNIT * position.size / position.margin;
-		uint256 margin = UNIT * size / leverage;
-
-		require(margin >= minMargin[currency], "!min-margin");
-
 		Product memory product = products[position.productId];
 
 		uint256 fee = size * product.fee / 10**6;
@@ -339,7 +334,7 @@ contract Trading {
 		closeOrders[nextCloseOrderId] = Order({
 			positionId: positionId,
 			productId: position.productId,
-			margin: margin,
+			size: size,
 			fee: fee,
 			isLong: position.isLong,
 			timestamp: block.timestamp
@@ -357,13 +352,20 @@ contract Trading {
 
 		// Check order and params
 		Order memory _closeOrder = closeOrders[orderId];
-		uint256 margin = _closeOrder.margin;
-		require(margin > 0, "!margin");
+		uint256 size = _closeOrder.size;
+		require(size > 0, "!size");
 
 		Position storage position = positions[_closeOrder.positionId];
 		require(position.margin > 0, "!position");
 		require(position.closeOrderId == orderId, "!order");
 		require(position.price > 0, "!opening");
+
+		if (size >= position.size) {
+			size = position.size;
+		}
+
+		uint256 leverage = UNIT * position.size / position.margin;
+		uint256 margin = UNIT * size / leverage;
 
 		if (margin >= position.margin) {
 			margin = position.margin;
@@ -387,6 +389,7 @@ contract Trading {
 		}
 
 		position.margin -= margin;
+		position.size -= size;
 
 		address currency = position.currency;
 
@@ -400,15 +403,13 @@ contract Trading {
 		
 		console.log('fee', currency, _closeOrder.fee);
 
-		uint256 leverage = UNIT * position.size / position.margin;
-
 		emit ClosePosition(
 			_closeOrder.positionId, 
 			position.owner, 
 			position.productId,
 			price, 
 			margin,
-			margin * leverage, 
+			size, 
 			_closeOrder.fee,
 			pnl, 
 			position.margin == 0
