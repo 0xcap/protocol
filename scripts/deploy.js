@@ -130,12 +130,12 @@ async function main() {
 
 
   // Treasury fee share setup
-  await treasury.setPoolShare(weth.address, 3000);
-  await treasury.setPoolShare(usdc.address, 3000);
+  await treasury.setPoolShare(weth.address, 5000);
+  await treasury.setPoolShare(usdc.address, 5000);
   console.log("set pool shares for treasury");
 
-  await treasury.setCapPoolShare(weth.address, 2000);
-  await treasury.setCapPoolShare(usdc.address, 2000);
+  await treasury.setCapPoolShare(weth.address, 1000);
+  await treasury.setCapPoolShare(usdc.address, 1000);
   console.log("set Cap shares for treasury");
 
   // Router setup
@@ -219,106 +219,6 @@ async function main() {
   // Mint some CAP, USDC
   await usdc.mint(parseUnits("100000"));
   await cap.mint(parseUnits("1000"));
-
-
-  // // Below are method tests
-
-  // //const randomWallet = await hre.ethers.Wallet.createRandom();
-  // //console.log('Created random wallet', randomWallet);
-
-  // // Stake in vault
-  // await trading.stake({value: parseUnits("100")});
-  // console.log('Staked 100 ETH');
-
-  // // submit order
-  // await trading.openPosition(1, true, parseUnits("50"), {value: parseUnits("10")});
-  // console.log('Submitted order long 10 ETH at 100x');
-
-  // let positions = await trading.getUserPositions(account);
-
-  // console.log('Positions', positions);
-  // console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-
-  // console.log('Account balance', formatUnits(await provider.getBalance(account)));
-
-  // // settle open position
-  // let settlingIds = await trading.checkPositionsToSettle();  
-  // console.log('Settling Ids', settlingIds);
-
-  // await trading.settlePositions(settlingIds);
-  // console.log('Settling position open (perform)');
-
-  // positions = await trading.getUserPositions(account);
-
-  // console.log('Positions', positions);
-  // console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  // settlingIds = await trading.checkPositionsToSettle();  
-  // console.log('Settling Ids (2)', settlingIds);
-
-  // // add margin
-  // await trading.addMargin(1, {value: parseUnits("5")});
-  // console.log('Added 5 ETH margin');
-
-  // positions = await trading.getUserPositions(account);
-
-  // console.log('Positions', positions);
-  // console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  // console.log('Account balance', formatUnits(await provider.getBalance(account)));
-
-  // // close position partial (2)
-  // await trading.closePosition(1, parseUnits("2"), false);
-  // console.log('Closed 2 ETH partially');
-
-  // positions = await trading.getUserPositions(account);
-
-  // console.log('Positions', positions);
-  // console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  // console.log('Account balance', formatUnits(await provider.getBalance(account)));
-  // console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
-
-  // // close remainder (13)
-  // await trading.closePosition(1, parseUnits("13"), false);
-  // console.log('Closed fully');
-
-  // positions = await trading.getUserPositions(account);
-
-  // console.log('Positions', positions);
-  // //console.log('Info', formatUnits(positions[0].price, 8), formatUnits(positions[0].margin));
-
-  // console.log('Account balance', formatUnits(await provider.getBalance(account)));
-  // console.log('Vault balance', formatUnits(await provider.getBalance(trading.address)));
-
-  // /*
-  // // liquidate position
-  // await trading.liquidatePosition(1);
-  // console.log('liquidating');
-
-  // positions = await trading.getUserPositions(account, 1);
-  // console.log('Positions', positions);
-
-  // console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  // console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
-  // */
-
-  // /*
-  // // Unstake partial
-  // await trading.unstake(1, 2000 * 10**6);
-  // console.log('Unstake partial');
-
-  // console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  // console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
-
-  // // Unstake remainder
-  // await trading.unstake(1, 8000 * 10**6);
-  // console.log('Unstake remaining');
-
-  // console.log('Account balance', formatUnits((await usdc.balanceOf(account)).toNumber()));
-  // console.log('Vault balance', formatUnits((await trading.getBalance(1)).toNumber()));
-  // */
 
 }
 

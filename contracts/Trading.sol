@@ -247,6 +247,8 @@ contract Trading {
 		_sendFeeToTreasury(currency, position.fee);
 		_updateOpenInterest(currency, position.size, false);
 
+		position.price = price;
+
 		emit NewPosition(
 			positionId,
 			position.user,

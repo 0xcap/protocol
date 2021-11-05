@@ -128,6 +128,10 @@ contract Rewards {
 		
 	}
 
+	// To receive ETH from WETH
+	fallback() external payable {}
+	receive() external payable {}
+
 	// Utils
 
 	function _transferOut(address to, uint256 amount) internal {
