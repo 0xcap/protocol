@@ -8,9 +8,6 @@ import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/IPool.sol";
-import "./interfaces/ITrading.sol";
-import "./interfaces/IRewards.sol";
-import "./interfaces/IPool.sol";
 import "./interfaces/IWETH.sol";
 
 contract Rewards {
@@ -99,10 +96,16 @@ contract Rewards {
 				IWETH(weth).withdraw(rewardToSend);
 				payable(msg.sender).sendValue(rewardToSend);
 			} else {
-				_transferOut(currency, msg.sender, rewardToSend);
+				_transferOut(msg.sender, rewardToSend);
 			}
 
-			emit CollectedReward(msg.sender, pool, currency, rewardToSend);
+			emit CollectedReward(
+				msg.sender, 
+				pool, 
+				currency, 
+				rewardToSend
+			);
+
 		}
 
 	}
@@ -113,11 +116,11 @@ contract Rewards {
 
 		uint256 supply = IPool(pool).totalSupply();
 
-		if (supply == 0) return 0;
+		if (supply == 0) return currentClaimableReward;
 
-		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingReward / supply;
+		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingReward * UNIT / supply;
 
-		if (_rewardPerTokenStored == 0) return 0; // no rewards yet
+		if (_rewardPerTokenStored == 0) return currentClaimableReward; // no rewards yet
 
 		uint256 accountStakedBalance = IPool(pool).getBalance(msg.sender);
 
@@ -127,13 +130,13 @@ contract Rewards {
 
 	// Utils
 
-	function _transferOut(address _currency, address to, uint256 _amount) internal {
+	function _transferOut(address to, uint256 amount) internal {
 		// adjust decimals
-		uint256 decimals = IERC20(_currency).decimals();
+		uint256 decimals = IERC20(currency).decimals();
 		if (decimals != 18) {
-			_amount = _amount * (10**decimals) / (10**18);
+			amount = amount * (10**decimals) / (10**18);
 		}
-		IERC20(_currency).safeTransfer(to, _amount);
+		IERC20(currency).safeTransfer(to, amount);
 	}
 
 	modifier onlyOwner() {

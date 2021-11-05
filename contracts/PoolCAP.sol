@@ -6,8 +6,6 @@ import "hardhat/console.sol";
 import "./libraries/SafeERC20.sol";
 
 import "./interfaces/IRouter.sol";
-import "./interfaces/IPool.sol";
-import "./interfaces/ITrading.sol";
 import "./interfaces/IRewards.sol";
 
 contract PoolCAP {
@@ -23,11 +21,11 @@ contract PoolCAP {
 	uint256 public totalSupply;
 
 	// Events
-    event Deposit(
+    event DepositCAP(
     	address indexed user, 
     	uint256 amount
     );
-    event Withdraw(
+    event WithdrawCAP(
     	address indexed user,
     	uint256 amount
     );
@@ -56,10 +54,9 @@ contract PoolCAP {
 		totalSupply += amount;
 		balances[msg.sender] += amount;
 
-		// Owner needs to approve this contract to spend their CAP
 		IERC20(cap).safeTransferFrom(msg.sender, address(this), amount);
 
-		emit Deposit(
+		emit DepositCAP(
 			msg.sender,
 			amount
 		);
@@ -79,7 +76,7 @@ contract PoolCAP {
 
 		IERC20(cap).safeTransfer(msg.sender, amount);
 
-		emit Withdraw(
+		emit WithdrawCAP(
 			msg.sender,
 			amount
 		);
