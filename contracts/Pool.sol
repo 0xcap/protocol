@@ -29,7 +29,7 @@ contract Pool {
 
     uint256 public utilizationMultiplier; // in bps
 
-    uint256 public maxDailyDrawdown = 2000; // 20%
+    uint256 public maxDailyDrawdown = 5000; // 50%
     uint256 public checkpointBalance;
     uint256 public checkpointTimestamp;
 
@@ -42,6 +42,8 @@ contract Pool {
 
     mapping(address => uint256) lastDeposited;
     uint256 public minDepositTime = 1 hours;
+
+    uint256 public openInterest;
 
     // Events
     event Deposit(
@@ -85,6 +87,19 @@ contract Pool {
 		minDepositTime = _minDepositTime;
 		utilizationMultiplier = _utilizationMultiplier;
 		maxCap = _maxCap;
+	}
+
+	// Open interest
+	function updateOpenInterest(uint256 amount, bool isDecrease) external onlyTrading {
+		if (isDecrease) {
+			if (openInterest <= amount) {
+				openInterest = 0;
+			} else {
+				openInterest -= amount;
+			}
+		} else {
+			openInterest += amount;
+		}
 	}
 
 	// Methods
@@ -195,7 +210,7 @@ contract Pool {
 			revert("!drawdown");
 		}
 
-		if (currency == weth) { // WETH
+		if (currency == weth) {
 			// Unwrap and send
 			IWETH(currency).withdraw(amount);
 			payable(destination).sendValue(amount);
@@ -232,12 +247,12 @@ contract Pool {
 	// Getters
 
 	function getUtlization() public view returns(uint256) {
-		uint256 activeMargin = ITrading(trading).getActiveMargin(currency);
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-		return activeMargin * utilizationMultiplier / currentBalance; // in bps
+		return openInterest * utilizationMultiplier / currentBalance; // in bps
 	}
 
 	function getCurrencyBalance(address account) external view returns(uint256) {
+		if (totalSupply == 0) return 0;
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
 		return balances[account] * currentBalance / totalSupply;
 	}

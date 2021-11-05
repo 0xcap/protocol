@@ -55,12 +55,12 @@ contract Router {
 	}
 
 	function setContracts(
+		address _treasury,
 		address _trading,
 		address _capPool,
 		address _oracle,
-		address _weth,
-		address _treasury,
-		address _darkOracle
+		address _darkOracle,
+		address _weth
 	) external onlyOwner {
 		trading = _trading;
 		capPool = _capPool;
@@ -81,10 +81,6 @@ contract Router {
 	function setCapRewards(address currency, address _contract) external onlyOwner {
 		capRewards[currency] = _contract;
 	}
-
-	// From router on the client, you can get the addresses of all the other contracts. No need for methods here
-
-	// Owner methods
 
 	function setOwner(address newOwner) external onlyOwner {
 		owner = newOwner;

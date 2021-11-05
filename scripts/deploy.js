@@ -140,12 +140,12 @@ async function main() {
 
   // Router setup
   await router.setContracts(
+    treasury.address,
     trading.address,
     poolCAP.address,
     oracle.address,
-    weth.address,
-    treasury.address,
-    darkOracleAddress
+    darkOracleAddress,
+    weth.address
   );
 
   await router.setPool(weth.address, poolWETH.address);

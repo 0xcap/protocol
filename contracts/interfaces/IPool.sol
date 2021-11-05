@@ -5,6 +5,8 @@ interface IPool {
     function totalSupply() external view returns (uint256);
 
     function creditUserProfit(address destination, uint256 amount) external;
+    
+    function updateOpenInterest(uint256 amount, bool isDecrease) external;
 
     function getBalance(address account) external view returns (uint256);
 }
