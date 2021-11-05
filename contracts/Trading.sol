@@ -10,7 +10,6 @@ import "./libraries/Address.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./interfaces/IRouter.sol";
-import "./interfaces/ITrading.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IWETH.sol";

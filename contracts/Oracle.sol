@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 
 import "./interfaces/IRouter.sol";
-import "./interfaces/IOracle.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 
@@ -126,7 +125,6 @@ contract Oracle {
 		if (requestsSinceFunding >= requestsPerFunding) {
 			requestsSinceFunding = 0;
 			ITreasury(treasury).fundOracle(darkOracle, costPerRequest * requestsPerFunding);
-			// TODO: event
 		}
 	}
 

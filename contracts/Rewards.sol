@@ -32,6 +32,8 @@ contract Rewards {
 	mapping(address => uint256) private claimableReward;
 	mapping(address => uint256) private previousRewardPerToken;
 
+	uint256 public constant UNIT = 10**18;
+
 	event CollectedReward(
 		address user,
 		address poolContract,
@@ -60,7 +62,7 @@ contract Rewards {
 	// Methods
 
 	function notifyRewardReceived(uint256 amount) external onlyTreasury {
-		pendingReward += amount;
+		pendingReward += amount; // 18 decimals
 	}
 
 	function updateRewards(address account) public {
@@ -69,13 +71,13 @@ contract Rewards {
 
 		if (supply == 0) return;
 
-		cumulativeRewardPerTokenStored += pendingReward * 10**18 / supply;
+		cumulativeRewardPerTokenStored += pendingReward * UNIT / supply;
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
 		uint256 accountStakedBalance = IPool(pool).getBalance(account);
 
-		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / 10**18;
+		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / UNIT;
 
 		previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
 
@@ -119,7 +121,7 @@ contract Rewards {
 
 		uint256 accountStakedBalance = IPool(pool).getBalance(msg.sender);
 
-		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / 10**18;
+		return currentClaimableReward + accountStakedBalance * (_rewardPerTokenStored - previousRewardPerToken[msg.sender]) / UNIT;
 		
 	}
 

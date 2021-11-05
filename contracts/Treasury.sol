@@ -5,8 +5,6 @@ import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
-import "./interfaces/ITreasury.sol";
-import "./interfaces/ITrading.sol";
 import "./interfaces/IRewards.sol";
 import "./interfaces/IWETH.sol";
 
@@ -25,7 +23,7 @@ contract Treasury {
 	address public weth;
 
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private capPoolShare; // currency (eth, usdc, etc.) => bps
+	mapping(address => uint256) private capPoolShare; // currency => bps
 
 	constructor() {
 		owner = msg.sender;
@@ -64,12 +62,12 @@ contract Treasury {
 
 		// Send poolShare to pool-currency rewards contract
 		uint256 poolReward = poolShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(poolRewards, poolReward);
+		_transferOut(currency, poolRewards, poolReward);
 		IRewards(poolRewards).notifyRewardReceived(poolReward);
 
 		// Send capPoolShare to cap-currency rewards contract
 		uint256 capReward = capPoolShare[currency] * amount / 10**4;
-		IERC20(currency).safeTransfer(capRewards, capReward);
+		_transferOut(currency, capRewards, capReward);
 		IRewards(capRewards).notifyRewardReceived(capReward);
 
 	}
@@ -87,12 +85,23 @@ contract Treasury {
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
-		IERC20(token).safeTransfer(destination, amount);
+		_transferOut(token, destination, amount);
 	}
 
 	// To receive ETH from WETH
 	fallback() external payable {}
 	receive() external payable {}
+
+	// Utils
+
+	function _transferOut(address currency, address to, uint256 amount) internal {
+		// adjust decimals
+		uint256 decimals = IERC20(currency).decimals();
+		if (decimals != 18) {
+			amount = amount * (10**decimals) / (10**18);
+		}
+		IERC20(currency).safeTransfer(to, amount);
+	}
 
 	// Getters
 
