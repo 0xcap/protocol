@@ -382,7 +382,7 @@ contract Trading {
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(position.margin * product.liquidationThreshold / 10**4)) {
-			console.log('is liq');
+			// console.log('is liq');
 			pnl = -1 * int256(position.margin);
 			margin = position.margin;
 			size = position.size;

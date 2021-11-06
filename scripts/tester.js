@@ -59,7 +59,7 @@ async function main() {
   // await hre.run('compile');
 
   const provider = hre.ethers.provider;
-  const [owner, user] = await ethers.getSigners();
+  const [owner, user, user2, user3] = await ethers.getSigners();
 
   console.log('owner', owner.address);
   console.log('user', user.address);
@@ -78,6 +78,9 @@ async function main() {
   const usdcAddress = '0x0Dd99d9f56A14E9D53b2DdC62D9f0bAbe806647A';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
+  const capAddress = '0x79E8AB29Ff79805025c9462a2f2F12e9A496f81d';
+  const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
+
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
   const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(usdcAddress));
 
@@ -91,12 +94,16 @@ async function main() {
   
   console.log('Contracts set', router.address);
 
+  // Mint some CAP, USDC
+  await usdc.connect(user2).mint(parseUnits("100000"));
+  await cap.connect(user2).mint(parseUnits("1000"));
+
   let tx, receipt;
 
-  // get product
-  console.log('BTC-USD');
-  const product = await trading.getProduct(2);
-  console.log('product', product);
+  // // get product
+  // console.log('BTC-USD');
+  // const product = await trading.getProduct(2);
+  // console.log('product', product);
   
   // // Update product
   // await trading.updateProduct(2, [
@@ -208,7 +215,7 @@ async function main() {
 
   // await poolWETH.setParams(3000, 0, 0, "10000000000000000000000000");
   
-  // console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
+  console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
   // console.log('Pool usdc balance', formatUnits(await usdc.balanceOf(poolUSDC.address)));
 
   // console.log('User staked CLP-ETH balance', formatUnits(await poolWETH.getBalance(user.address)));
@@ -221,7 +228,7 @@ async function main() {
 
   // await poolWETH.connect(user).withdraw(parseUnits("0.4"));
   
-  // console.log('Withdraw', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
+  console.log('Pool WETH total supply', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
 
   // // claim rewards
 
@@ -237,6 +244,7 @@ async function main() {
   // console.log('pendingReward weth', formatUnits(await poolRewardsWETH.pendingReward()));
   // console.log('cumulativeRewardPerTokenStored weth', formatUnits(await poolRewardsWETH.cumulativeRewardPerTokenStored()));
   // console.log('claimable reward weth', formatUnits(await poolRewardsWETH.getClaimableReward()));
+  // console.log('claimable reward usdc', formatUnits(await poolRewardsUSDC.connect(user3).getClaimableReward()));
 
   // CAP: stake, unstake, claim rewards
 

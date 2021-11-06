@@ -104,6 +104,8 @@ contract Pool {
 
 	function deposit(uint256 amount) external payable returns(uint256) {
 
+		uint256 currentBalance = _getCurrentBalance();
+
 		if (currency == weth) {
 			require(msg.value > 0, "!amount-eth");
 			amount = msg.value;
@@ -113,11 +115,8 @@ contract Pool {
 		}
 
 		require(amount > 0, "!amount");
-
-		uint256 currentBalance = _getCurrentBalance();
-
 		require(amount + currentBalance <= maxCap, "!max-cap");
-
+		
         uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
 
         require(clpAmountToMint > 0, "!amount-clp");
