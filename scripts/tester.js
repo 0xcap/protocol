@@ -65,7 +65,7 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x22a9B82A6c3D2BFB68F324B2e8367f346Dd6f32a';
+  const routerAddress = '0x8E45C0936fa1a65bDaD3222bEFeC6a03C83372cE';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const wethAddress = await router.weth();
@@ -75,10 +75,10 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0x0Dd99d9f56A14E9D53b2DdC62D9f0bAbe806647A';
+  const usdcAddress = '0xd710a67624Ad831683C86a48291c597adE30F787';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0x79E8AB29Ff79805025c9462a2f2F12e9A496f81d';
+  const capAddress = '0xd753c12650c280383Ce873Cc3a898F6f53973d16';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -94,9 +94,9 @@ async function main() {
   
   console.log('Contracts set', router.address);
 
-  // Mint some CAP, USDC
-  await usdc.connect(user2).mint(parseUnits("100000"));
-  await cap.connect(user2).mint(parseUnits("1000"));
+  // // Mint some CAP, USDC
+  // await usdc.connect(user2).mint(parseUnits("100000"));
+  // await cap.connect(user2).mint(parseUnits("1000"));
 
   let tx, receipt;
 
@@ -215,7 +215,7 @@ async function main() {
 
   // await poolWETH.setParams(3000, 0, 0, "10000000000000000000000000");
   
-  console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
+  // console.log('Pool weth balance', formatUnits(await weth.balanceOf(poolWETH.address)));
   // console.log('Pool usdc balance', formatUnits(await usdc.balanceOf(poolUSDC.address)));
 
   // console.log('User staked CLP-ETH balance', formatUnits(await poolWETH.getBalance(user.address)));
@@ -228,7 +228,7 @@ async function main() {
 
   // await poolWETH.connect(user).withdraw(parseUnits("0.4"));
   
-  console.log('Pool WETH total supply', formatUnits(await poolWETH.getBalance(user.address)), formatUnits(await poolWETH.totalSupply()));
+  console.log('Pool WETH', formatUnits(await poolWETH.getBalance(user2.address)), formatUnits(await poolRewardsWETH.pendingReward()), formatUnits(await poolWETH.totalSupply()));
 
   // // claim rewards
 

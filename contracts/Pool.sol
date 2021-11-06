@@ -21,7 +21,7 @@ contract Pool {
 	address public weth;
 	address public trading;
 
-	uint256 public withdrawFee = 15; // 0.15%
+	uint256 public withdrawFee = 30; // 0.3%
 
     address public currency;
 
@@ -79,12 +79,14 @@ contract Pool {
 		uint256 _maxDailyDrawdown,
 		uint256 _minDepositTime,
 		uint256 _utilizationMultiplier,
-		uint256 _maxCap
+		uint256 _maxCap,
+		uint256 _withdrawFee
 	) external onlyOwner {
 		maxDailyDrawdown = _maxDailyDrawdown;
 		minDepositTime = _minDepositTime;
 		utilizationMultiplier = _utilizationMultiplier;
 		maxCap = _maxCap;
+		withdrawFee = _withdrawFee;
 	}
 
 	// Open interest
@@ -102,7 +104,7 @@ contract Pool {
 
 	// Methods
 
-	function deposit(uint256 amount) external payable returns(uint256) {
+	function deposit(uint256 amount) external payable {
 
 		uint256 currentBalance = _getCurrentBalance();
 
@@ -116,7 +118,7 @@ contract Pool {
 
 		require(amount > 0, "!amount");
 		require(amount + currentBalance <= maxCap, "!max-cap");
-		
+
         uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
 
         require(clpAmountToMint > 0, "!amount-clp");
@@ -135,11 +137,9 @@ contract Pool {
         	clpAmountToMint
         );
 
-        return clpAmountToMint;
-
 	}
 
-	function withdraw(uint256 currencyAmount) external returns(uint256) {
+	function withdraw(uint256 currencyAmount) external {
 
 		require(currencyAmount > 0, "!amount");
 		require(block.timestamp > lastDeposited[msg.sender] + minDepositTime, "!cooldown");
@@ -151,18 +151,22 @@ contract Pool {
 		uint256 currentBalance = _getCurrentBalance();
 		require(currentBalance > 0 && totalSupply > 0, "!empty");
 
-		uint256 utlization = getUtlization();
-		require(utlization < 10**4, "!utilization");
+		uint256 utilization = getUtilization();
+		require(utilization < 10**4, "!utilization");
 		
-		uint256 availableBalance = currentBalance * (10**4 - utlization) / 10**4;
-
-		uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
-		require(currencyAmountAfterFee <= availableBalance, "!available-balance");
-
 		// CLP amount
 		uint256 amount = currencyAmount * totalSupply / currentBalance;
 
-		require(amount <= balances[msg.sender], "!balance");
+		// Set to max if above max
+		if (amount >= balances[msg.sender]) {
+			amount = balances[msg.sender];
+			currencyAmount = amount * currentBalance / totalSupply;
+		}
+
+		uint256 availableBalance = currentBalance * (10**4 - utilization) / 10**4;
+
+		uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
+		require(currencyAmountAfterFee <= availableBalance, "!available-balance");
 
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;
@@ -182,8 +186,6 @@ contract Pool {
 			currencyAmountAfterFee,
 			amount
 		);
-
-		return currencyAmountAfterFee;
 		
 	}
 
@@ -252,7 +254,7 @@ contract Pool {
 
 	// Getters
 
-	function getUtlization() public view returns(uint256) {
+	function getUtilization() public view returns(uint256) {
 		uint256 currentBalance = _getCurrentBalance();
 		return openInterest * utilizationMultiplier / currentBalance; // in bps
 	}
