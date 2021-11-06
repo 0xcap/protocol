@@ -407,7 +407,7 @@ contract Trading {
 			size, 
 			_closeOrder.fee,
 			pnl, 
-			position.margin == 0
+			false
 		);
 
 		address positionUser = position.user;
