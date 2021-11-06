@@ -209,9 +209,9 @@ async function main() {
       p.feed,
       parseUnits(""+p.maxLeverage),
       parseInt(p.oracleMaxDeviation * 100),
+      parseInt(p.liquidationThreshold * 100),
       parseInt(p.fee * 10000),
       parseInt(p.interest * 100),
-      parseInt(p.liquidationThreshold * 100)
     ]);
     console.log('Added product ' + p.symbol);
   }

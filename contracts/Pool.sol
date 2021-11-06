@@ -163,7 +163,7 @@ contract Pool {
 		// CLP amount
 		uint256 amount = currencyAmount * totalSupply / currentBalance;
 
-		require(amount <= balances[msg.sender], "!clp-balance");
+		require(amount <= balances[msg.sender], "!balance");
 
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;

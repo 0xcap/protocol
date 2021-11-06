@@ -65,7 +65,7 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x1D3b68fBD686e06Fbda1cb6cAF0C8DA558FCC3A0';
+  const routerAddress = '0x22a9B82A6c3D2BFB68F324B2e8367f346Dd6f32a';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const wethAddress = await router.weth();
@@ -75,7 +75,7 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0x74FeFc9b47aAea34240D8e015D7eA4201F00cFA4';
+  const usdcAddress = '0x0Dd99d9f56A14E9D53b2DdC62D9f0bAbe806647A';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -94,20 +94,20 @@ async function main() {
   let tx, receipt;
 
   // get product
-  console.log('ETH-USD');
-  const product = await trading.getProduct(1);
+  console.log('BTC-USD');
+  const product = await trading.getProduct(2);
   console.log('product', product);
   
   // // Update product
-  // await trading.updateProduct(1, [
+  // await trading.updateProduct(2, [
   //   product[0],
   //   parseUnits("50"),
   //   product[2],
-  //   product[3],
-  //   product[4],
-  //   product[5]
+  //   8000,
+  //   1500,
+  //   1600
   // ]);
-  // console.log('Updated ETH/USD');
+  // console.log('Updated BTC/USD');
   
   // // submit order (ETH)
   // tx = await trading.connect(user).submitNewPosition(

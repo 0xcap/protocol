@@ -369,8 +369,20 @@ contract Trading {
 
 		int256 pnl = _getPnL(position, price, margin, product.interest);
 
+		// if (pnl < 0) {
+		// 	console.log('pnl neg', uint256(-1*pnl));
+		// } else {
+		// 	console.log('pnl pos', uint256(pnl));
+		// }
+
+		// console.log('others1', margin, position.margin, product.liquidationThreshold);
+		// console.log('others2', leverage, size, position.size);
+		// console.log('others3', product.interest, position.timestamp, block.timestamp);
+		// console.log('others4', price, product.feed, product.oracleMaxDeviation);
+
 		// Check if it's a liquidation
-		if (pnl <= -1 * int256(position.margin) * int256(product.liquidationThreshold) / 10**4) {
+		if (pnl <= -1 * int256(position.margin * product.liquidationThreshold / 10**4)) {
+			console.log('is liq');
 			pnl = -1 * int256(position.margin);
 			margin = position.margin;
 			size = position.size;
@@ -568,7 +580,7 @@ contract Trading {
 
 			int256 pnl = _getPnL(position, price, margin, product.interest);
 
-			if (pnl <= -1 * int256(margin) * int256(product.liquidationThreshold) / 10**4) {
+			if (pnl <= -1 * int256(margin * product.liquidationThreshold / 10**4)) {
 
 				_updateOpenInterest(position.currency, position.size, true);
 				_sendFeeToTreasury(position.currency, margin);
@@ -715,7 +727,7 @@ contract Trading {
 			}
 		} else {
 			if (price > position.price) {
-				pnl = margin * leverage * (price - position.price ) / (position.price * UNIT);
+				pnl = margin * leverage * (price - position.price) / (position.price * UNIT);
 				pnlIsNegative = true;
 			} else {
 				pnl = margin * leverage * (position.price - price) / (position.price * UNIT);
