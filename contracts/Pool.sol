@@ -171,14 +171,7 @@ contract Pool {
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;
 
-		// transfer token or ETH out
-		if (currency == weth) {
-			// Unwrap and send
-			IWETH(currency).withdraw(currencyAmountAfterFee);
-			payable(msg.sender).sendValue(currencyAmountAfterFee);
-		} else {
-			_transferOut(msg.sender, currencyAmountAfterFee);
-		}
+		_transferOut(msg.sender, currencyAmountAfterFee);
 
 		emit Withdraw(
 			msg.sender,
@@ -191,6 +184,8 @@ contract Pool {
 
 	function creditUserProfit(address destination, uint256 amount) external onlyTrading {
 		
+		if (amount == 0) return;
+
 		uint256 currentBalance = _getCurrentBalance();
 
 		require(amount < currentBalance, "!balance");
@@ -208,13 +203,7 @@ contract Pool {
 			revert("!drawdown");
 		}
 
-		if (currency == weth) {
-			// Unwrap and send
-			IWETH(currency).withdraw(amount);
-			payable(destination).sendValue(amount);
-		} else {
-			_transferOut(destination, amount);
-		}
+		_transferOut(destination, amount);
 
 	}
 
@@ -226,7 +215,7 @@ contract Pool {
 
 	function _transferIn(uint256 amount) internal {
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
+		uint256 decimals = IRouter(router).getDecimals(currency);
 		if (decimals != 18) {
 			amount = amount * (10**decimals) / (10**18);
 		}
@@ -234,18 +223,26 @@ contract Pool {
 	}
 
 	function _transferOut(address to, uint256 amount) internal {
+		if (amount == 0 || currency == address(0) || to == address(0)) return;
+		
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
+		uint256 decimals = IRouter(router).getDecimals(currency);
 		if (decimals != 18) {
 			amount = amount * (10**decimals) / (10**18);
 		}
-		IERC20(currency).safeTransfer(to, amount);
+		
+		if (currency == weth) {
+			IWETH(weth).withdraw(amount);
+			payable(to).sendValue(amount);
+		} else {
+			IERC20(currency).safeTransfer(to, amount);
+		}
 	}
 
 	function _getCurrentBalance() internal view returns(uint256) {
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
+		uint256 decimals = IRouter(router).getDecimals(currency);
 		if (decimals != 18) {
 			currentBalance = currentBalance * (10**18) / (10**decimals);
 		}

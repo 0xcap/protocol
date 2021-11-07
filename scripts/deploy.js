@@ -81,11 +81,11 @@ async function main() {
   console.log("weth deployed to:", weth.address);
 
   const MockToken = await hre.ethers.getContractFactory("MockToken");
-  const cap = await MockToken.deploy("Cap", "CAP");
+  const cap = await MockToken.deploy("Cap", "CAP", 18);
   await cap.deployed();
   console.log("cap deployed to:", cap.address);
 
-  const usdc = await MockToken.deploy("USDC", "USDC");
+  const usdc = await MockToken.deploy("USDC", "USDC", 6);
   await usdc.deployed();
   console.log("usdc deployed to:", usdc.address);
 
@@ -217,7 +217,7 @@ async function main() {
   }
 
   // Mint some CAP, USDC
-  await usdc.mint(parseUnits("100000"));
+  await usdc.mint(parseUnits("100000", 6));
   await cap.mint(parseUnits("1000"));
 
 }

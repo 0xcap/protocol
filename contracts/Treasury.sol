@@ -96,7 +96,7 @@ contract Treasury {
 
 	function _transferOut(address currency, address to, uint256 amount) internal {
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
+		uint256 decimals = IRouter(router).getDecimals(currency);
 		if (decimals != 18) {
 			amount = amount * (10**decimals) / (10**18);
 		}

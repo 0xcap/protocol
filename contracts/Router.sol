@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
+import "./libraries/SafeERC20.sol";
+
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IRouter.sol";
 
 contract Router {
+
+	using SafeERC20 for IERC20; 
 
 	// Contract dependencies
 	address public owner;
@@ -19,6 +23,8 @@ contract Router {
 	address public weth;
 
 	address[] public currencies;
+
+	mapping(address => uint8) decimals;
 
 	mapping(address => address) pools; // currency => contract
 	mapping(address => address) poolRewards; // currency => contract
@@ -48,10 +54,20 @@ contract Router {
 		return capRewards[currency];
 	}
 
+	function getDecimals(address currency) external view returns(uint8) {
+		if (decimals[currency] > 0) return decimals[currency];
+		if (IERC20(currency).decimals() > 0) return IERC20(currency).decimals();
+		return 18;
+	}
+
 	// Setters
 
 	function setCurrencies(address[] calldata _currencies) external onlyOwner {
 		currencies = _currencies;
+	}
+
+	function setDecimals(address currency, uint8 _decimals) external onlyOwner {
+		decimals[currency] = _decimals;
 	}
 
 	function setContracts(
@@ -62,12 +78,12 @@ contract Router {
 		address _darkOracle,
 		address _weth
 	) external onlyOwner {
+		treasury = _treasury;
 		trading = _trading;
 		capPool = _capPool;
 		oracle = _oracle;
-		weth = _weth;
-		treasury = _treasury;
 		darkOracle = _darkOracle;
+		weth = _weth;
 	}
 
 	function setPool(address currency, address _contract) external onlyOwner {

@@ -95,7 +95,7 @@ async function main() {
   console.log('Contracts set', router.address);
 
   // // Mint some CAP, USDC
-  // await usdc.connect(user2).mint(parseUnits("100000"));
+  // await usdc.connect(user2).mint(parseUnits("100000", 6));
   // await cap.connect(user2).mint(parseUnits("1000"));
 
   let tx, receipt;

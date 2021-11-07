@@ -20,6 +20,8 @@ interface IRouter {
 
     function currenciesLength() external view returns (uint256);
 
+    function getDecimals(address currency) external view returns(uint8);
+
     function getPool(address currency) external view returns (address);
 
     function getPoolRewards(address currency) external view returns (address);

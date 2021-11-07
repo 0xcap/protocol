@@ -23,7 +23,6 @@ contract Trading {
 	// Structs
 
 	struct Product {
-		// 32 bytes
 		address feed; // Chainlink. Can be address(0) for no bounding
 		uint256 maxLeverage; // set to 0 to deactivate product
 		uint256 oracleMaxDeviation; // in bps
@@ -73,7 +72,10 @@ contract Trading {
 
 	mapping(address => uint256) minMargin; // currency => amount
 
-	uint256 public constant UNIT = 10**18;
+	uint256 public constant UNIT_DECIMALS = 18;
+	uint256 public constant UNIT = 10**UNIT_DECIMALS;
+
+	uint256 public constant PRICE_DECIMALS = 8;
 
 	// Events
 	event NewPosition(
@@ -154,9 +156,6 @@ contract Trading {
 		Product storage product = products[productId];
 
 		require(product.liquidationThreshold > 0, "!product-does-not-exist");
-		
-		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
-		require(_product.liquidationThreshold > 0, "!liqThreshold");
 
 		product.feed = _product.feed;
 		product.maxLeverage = _product.maxLeverage;
@@ -179,20 +178,16 @@ contract Trading {
 	) external payable {
 
 		if (currency == weth) { // User is sending ETH
-			_wrapETH();
 			margin = msg.value;
+			IWETH(weth).deposit{value: margin}();
 		}
 
 		// Check params
 		require(margin > 0, "!margin");
+		require(size > 0, "!size");
 		require(IRouter(router).isSupportedCurrency(currency), "!currency");
 
-		Product storage product = products[productId];
-
-		// Check leverage
-		uint256 leverage = UNIT * size / margin;
-		require(leverage >= UNIT, "!leverage");
-		require(leverage <= product.maxLeverage, "!max-leverage");
+		Product memory product = products[productId];
 
 		uint256 fee = size * product.fee / 10**6;
 
@@ -202,6 +197,11 @@ contract Trading {
 		} else {
 			_transferIn(currency, margin + fee);
 		}
+
+		// Checks
+		uint256 leverage = UNIT * size / margin;
+		require(leverage >= UNIT, "!leverage");
+		require(leverage <= product.maxLeverage, "!max-leverage");
 
 		require(margin >= minMargin[currency], "!min-margin");
 
@@ -286,11 +286,7 @@ contract Trading {
 
 		// Refund margin + fee
 		uint256 marginPlusFee = margin + fee;
-		if (currency == weth) {
-			_sendETH(positionUser, marginPlusFee);
-		} else {
-			_transferOut(currency, positionUser, marginPlusFee);
-		}
+		_transferOut(currency, positionUser, marginPlusFee, true);
 
 	}
 
@@ -308,6 +304,10 @@ contract Trading {
 		require(position.margin > 0, "!position");
 		require(position.price > 0, "!opening");
 		require(position.closeOrderId == 0, "!closing");
+
+		if (size > position.size) {
+			size = position.size;
+		}
 
 		address currency = position.currency;
 
@@ -369,20 +369,8 @@ contract Trading {
 
 		int256 pnl = _getPnL(position, price, margin, product.interest);
 
-		// if (pnl < 0) {
-		// 	console.log('pnl neg', uint256(-1*pnl));
-		// } else {
-		// 	console.log('pnl pos', uint256(pnl));
-		// }
-
-		// console.log('others1', margin, position.margin, product.liquidationThreshold);
-		// console.log('others2', leverage, size, position.size);
-		// console.log('others3', product.interest, position.timestamp, block.timestamp);
-		// console.log('others4', price, product.feed, product.oracleMaxDeviation);
-
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(position.margin * product.liquidationThreshold / 10**4)) {
-			// console.log('is liq');
 			pnl = -1 * int256(position.margin);
 			margin = position.margin;
 			size = position.size;
@@ -426,22 +414,14 @@ contract Trading {
 		if (pnl < 0) {
 			{
 				uint256 positivePnl = uint256(-1 * pnl);
-				_transferOut(currency, pool, positivePnl);
+				_transferOut(currency, pool, positivePnl, false);
 				if (positivePnl < margin) {
-					if (currency == weth) {
-						_sendETH(positionUser, margin - positivePnl);
-					} else {
-						_transferOut(currency, positionUser, margin - positivePnl);
-					}
+					_transferOut(currency, positionUser, margin - positivePnl, true);
 				}
 			}
 		} else {
-			if (currency == weth) {
-				_sendETH(positionUser, margin);
-			} else {
-				_transferOut(currency, positionUser, margin);
-			}
 			IPool(pool).creditUserProfit(positionUser, uint256(pnl));
+			_transferOut(currency, positionUser, margin, true);
 		}
 
 	}
@@ -464,17 +444,14 @@ contract Trading {
 		delete closeOrders[orderId];
 
 		// Refund fee
-		address currency = position.currency;
-		if (currency == weth) {
-			// Unwrap and send
-			_sendETH(position.user, fee);
-		} else {
-			_transferOut(currency, position.user, fee);
-		}
+		_transferOut(position.currency, position.user, fee, true);
 
 	}
 
-	function releaseMargin(uint256 positionId, bool includeFee) external onlyOwner {
+	function releaseMargin(
+		uint256 positionId, 
+		bool includeFee
+	) external onlyOwner {
 
 		Position storage position = positions[positionId];
 		require(position.margin > 0, "!position");
@@ -507,11 +484,7 @@ contract Trading {
 
 		delete positions[positionId];
 
-		if (currency == weth) {
-			_sendETH(positionUser, margin);
-		} else {
-			_transferOut(currency, positionUser, margin);
-		}
+		_transferOut(currency, positionUser, margin, true);
 
 	}
 
@@ -530,14 +503,13 @@ contract Trading {
 		address currency = position.currency;
 
 		if (currency == weth) {
-			require(msg.value > 0, "!margin");
 			margin = msg.value;
 			IWETH(currency).deposit{value: margin}();
 		} else {
 			_transferIn(currency, margin);
 		}
 
-		require(margin >= minMargin[currency], "!min-margin");
+		require(margin > 0 && margin >= minMargin[currency], "!min-margin");
 
 		// New position params
 		uint256 newMargin = position.margin + margin;
@@ -568,7 +540,7 @@ contract Trading {
 			uint256 positionId = positionIds[i];
 			Position memory position = positions[positionId];
 			
-			if (position.productId == 0 || position.price == 0) {
+			if (position.margin == 0 || position.price == 0) {
 				continue;
 			}
 
@@ -580,12 +552,16 @@ contract Trading {
 
 			int256 pnl = _getPnL(position, price, margin, product.interest);
 
-			if (pnl <= -1 * int256(margin * product.liquidationThreshold / 10**4)) {
+			uint256 threshold = margin * product.liquidationThreshold / 10**4;
 
+			if (pnl <= -1 * int256(threshold)) {
+
+				uint256 fee = margin - threshold;
+				address pool = IRouter(router).getPool(position.currency);
+				
+				_transferOut(position.currency, pool, threshold, false);
+				_sendFeeToTreasury(position.currency, fee);
 				_updateOpenInterest(position.currency, position.size, true);
-				_sendFeeToTreasury(position.currency, margin);
-
-				position.margin = 0;
 
 				emit ClosePosition(
 					positionId, 
@@ -594,7 +570,7 @@ contract Trading {
 					price, 
 					margin,
 					position.size,
-					0,
+					fee,
 					-1 * int256(margin), 
 					true
 				);
@@ -617,40 +593,34 @@ contract Trading {
 		IPool(pool).updateOpenInterest(amount, isDecrease);
 	}
 
-	// Send ETH from WETH
-	function _sendETH(address to, uint256 amount) internal {
-		IWETH(weth).withdraw(amount);
-		payable(to).sendValue(amount);
-	}
-
 	function _sendFeeToTreasury(address currency, uint256 amount) internal {
-		_transferOut(currency, treasury, amount);
+		_transferOut(currency, treasury, amount, false);
 		ITreasury(treasury).notifyFeeReceived(currency, amount);
 	}
 
 	function _transferIn(address currency, uint256 amount) internal {
 		if (amount == 0 || currency == address(0)) return;
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
+		uint256 decimals = IRouter(router).getDecimals(currency);
+		if (decimals != UNIT_DECIMALS) {
+			amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
 		}
 		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
 	}
 
-	function _transferOut(address currency, address to, uint256 amount) internal {
+	function _transferOut(address currency, address to, uint256 amount, bool sendETH) internal {
 		if (amount == 0 || currency == address(0) || to == address(0)) return;
 		// adjust decimals
-		uint256 decimals = IERC20(currency).decimals();
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
+		uint256 decimals = IRouter(router).getDecimals(currency);
+		if (decimals != UNIT_DECIMALS) {
+			amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
 		}
-		IERC20(currency).safeTransfer(to, amount);
-	}
-
-	function _wrapETH() internal {
-		require(msg.value > 0, "!eth");
-		IWETH(weth).deposit{value: msg.value}();
+		if (currency == weth && sendETH) {
+			IWETH(weth).withdraw(amount);
+			payable(to).sendValue(amount);
+		} else {
+			IERC20(currency).safeTransfer(to, amount);
+		}
 	}
 
 	function _validatePrice(
@@ -663,7 +633,7 @@ contract Trading {
 
 		if (chainlinkPrice == 0) {
 			require(price > 0, "!price");
-			return price * 10**10;
+			return price * 10**(UNIT_DECIMALS - PRICE_DECIMALS);
 		}
 
 		// Bound check oracle price against chainlink price
@@ -672,10 +642,10 @@ contract Trading {
 			price > chainlinkPrice + chainlinkPrice * oracleMaxDeviation / 10**4 ||
 			price < chainlinkPrice - chainlinkPrice * oracleMaxDeviation / 10**4
 		) {
-			return chainlinkPrice * 10**10;
+			return chainlinkPrice * 10**(UNIT_DECIMALS - PRICE_DECIMALS);
 		}
 
-		return price * 10**10;
+		return price * 10**(UNIT_DECIMALS - PRICE_DECIMALS);
 
 	}
 
@@ -696,8 +666,8 @@ contract Trading {
 		uint8 decimals = AggregatorV3Interface(feed).decimals();
 
 		uint256 feedPrice;
-		if (decimals != 8) {
-			feedPrice = uint256(price) * 10**8 / 10**decimals;
+		if (decimals != PRICE_DECIMALS) {
+			feedPrice = uint256(price) * 10**PRICE_DECIMALS / 10**decimals;
 		} else {
 			feedPrice = uint256(price);
 		}
@@ -717,27 +687,28 @@ contract Trading {
 		uint256 pnl;
 
 		uint256 leverage = UNIT * position.size / position.margin;
+		uint256 size = margin * leverage;
 
 		if (position.isLong) {
 			if (price >= position.price) {
-				pnl = margin * leverage * (price - position.price) / (position.price * UNIT);
+				pnl = size * (price - position.price) / (position.price * UNIT);
 			} else {
-				pnl = margin * leverage * (position.price - price) / (position.price * UNIT);
+				pnl = size * (position.price - price) / (position.price * UNIT);
 				pnlIsNegative = true;
 			}
 		} else {
 			if (price > position.price) {
-				pnl = margin * leverage * (price - position.price) / (position.price * UNIT);
+				pnl = size * (price - position.price) / (position.price * UNIT);
 				pnlIsNegative = true;
 			} else {
-				pnl = margin * leverage * (position.price - price) / (position.price * UNIT);
+				pnl = size * (position.price - price) / (position.price * UNIT);
 			}
 		}
 
 		// Subtract interest from P/L
-		if (block.timestamp >= position.timestamp + 900) {
+		if (block.timestamp >= position.timestamp + 15 minutes) {
 
-			uint256 _interest = margin * leverage * interest * (block.timestamp - position.timestamp) / (UNIT * 10**4 * 360 days);
+			uint256 _interest = size * interest * (block.timestamp - position.timestamp) / (UNIT * 10**4 * 360 days);
 
 			if (pnlIsNegative) {
 				pnl += _interest;
