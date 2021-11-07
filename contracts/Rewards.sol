@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
@@ -64,21 +62,21 @@ contract Rewards {
 
 	function updateRewards(address account) public {
 
+		if (account == address(0)) return;
+
 		uint256 supply = IPool(pool).totalSupply();
 
-		if (supply == 0) return;
-
-		cumulativeRewardPerTokenStored += pendingReward * UNIT / supply;
+		if (supply > 0) {
+			cumulativeRewardPerTokenStored += pendingReward * UNIT / supply;
+			pendingReward = 0;
+		}
 
 		if (cumulativeRewardPerTokenStored == 0) return; // no rewards yet
 
-		uint256 accountStakedBalance = IPool(pool).getBalance(account);
+		uint256 accountBalance = IPool(pool).getBalance(account); // in CLP
 
-		claimableReward[account] += accountStakedBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / UNIT;
-
+		claimableReward[account] += accountBalance * (cumulativeRewardPerTokenStored - previousRewardPerToken[account]) / UNIT;
 		previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
-
-		pendingReward = 0;
 
 	}
 
@@ -91,13 +89,7 @@ contract Rewards {
 
 		if (rewardToSend > 0) {
 
-			if (currency == weth) { // WETH
-				// Unwrap and send
-				IWETH(weth).withdraw(rewardToSend);
-				payable(msg.sender).sendValue(rewardToSend);
-			} else {
-				_transferOut(msg.sender, rewardToSend);
-			}
+			_transferOut(msg.sender, rewardToSend);
 
 			emit CollectedReward(
 				msg.sender, 
@@ -115,11 +107,9 @@ contract Rewards {
 		uint256 currentClaimableReward = claimableReward[msg.sender];
 
 		uint256 supply = IPool(pool).totalSupply();
-
 		if (supply == 0) return currentClaimableReward;
 
 		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingReward * UNIT / supply;
-
 		if (_rewardPerTokenStored == 0) return currentClaimableReward; // no rewards yet
 
 		uint256 accountStakedBalance = IPool(pool).getBalance(msg.sender);
@@ -135,12 +125,16 @@ contract Rewards {
 	// Utils
 
 	function _transferOut(address to, uint256 amount) internal {
+		if (amount == 0 || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
+		amount = amount * (10**decimals) / UNIT;
+		if (currency == weth) {
+			IWETH(weth).withdraw(amount);
+			payable(to).sendValue(amount);
+		} else {
+			IERC20(currency).safeTransfer(to, amount);
 		}
-		IERC20(currency).safeTransfer(to, amount);
 	}
 
 	modifier onlyOwner() {

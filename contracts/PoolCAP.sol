@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 import "./libraries/SafeERC20.sol";
 
 import "./interfaces/IRouter.sol";
@@ -66,10 +64,9 @@ contract PoolCAP {
 	function withdraw(uint256 amount) external {
 		
 		require(amount > 0, "!amount");
+		require(amount <= balances[msg.sender], "!balance");
 
 		_updateRewards();
-
-		require(amount <= balances[msg.sender], "!balance");
 
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;

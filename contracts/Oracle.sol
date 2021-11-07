@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/ITrading.sol";
@@ -72,7 +70,6 @@ contract Oracle {
 
 				} catch Error(string memory reason) {
 					ITrading(trading).cancelPosition(positionId);
-					console.log("Error position", positionId, reason);
 					emit SettlementError(
 						positionId,
 						false,
@@ -95,7 +92,6 @@ contract Oracle {
 
 				} catch Error(string memory reason) {
 					ITrading(trading).cancelOrder(orderId);
-					console.log("Error order", orderId, reason);
 					emit SettlementError(
 						orderId,
 						true,

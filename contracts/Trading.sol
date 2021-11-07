@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "./libraries/SafeERC20.sol";
@@ -602,9 +601,7 @@ contract Trading {
 		if (amount == 0 || currency == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != UNIT_DECIMALS) {
-			amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
-		}
+		amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
 		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
 	}
 
@@ -612,9 +609,7 @@ contract Trading {
 		if (amount == 0 || currency == address(0) || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != UNIT_DECIMALS) {
-			amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
-		}
+		amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
 		if (currency == weth && sendETH) {
 			IWETH(weth).withdraw(amount);
 			payable(to).sendValue(amount);

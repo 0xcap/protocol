@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-
 import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
@@ -24,14 +22,13 @@ contract Pool {
 	uint256 public withdrawFee = 30; // 0.3%
 
     address public currency;
+    address public rewards; // contract
 
     uint256 public utilizationMultiplier; // in bps
 
     uint256 public maxDailyDrawdown = 5000; // 50%
     uint256 public checkpointBalance;
     uint256 public checkpointTimestamp;
-
-    address public rewards; // contract
 
     uint256 public maxCap = 1000000 ether;
 
@@ -42,6 +39,9 @@ contract Pool {
     uint256 public minDepositTime = 1 hours;
 
     uint256 public openInterest;
+
+    uint256 public constant UNIT_DECIMALS = 18;
+	uint256 public constant UNIT = 10**UNIT_DECIMALS;
 
     // Events
     event Deposit(
@@ -109,9 +109,8 @@ contract Pool {
 		uint256 currentBalance = _getCurrentBalance();
 
 		if (currency == weth) {
-			require(msg.value > 0, "!amount-eth");
 			amount = msg.value;
-			IWETH(currency).deposit{value: msg.value}();
+			IWETH(currency).deposit{value: amount}();
 		} else {
 			_transferIn(amount);
 		}
@@ -120,8 +119,6 @@ contract Pool {
 		require(amount + currentBalance <= maxCap, "!max-cap");
 
         uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
-
-        require(clpAmountToMint > 0, "!amount-clp");
 
         lastDeposited[msg.sender] = block.timestamp;
 
@@ -164,7 +161,6 @@ contract Pool {
 		}
 
 		uint256 availableBalance = currentBalance * (10**4 - utilization) / 10**4;
-
 		uint256 currencyAmountAfterFee = currencyAmount * (10**4 - withdrawFee) / 10**4;
 		require(currencyAmountAfterFee <= availableBalance, "!available-balance");
 
@@ -216,21 +212,15 @@ contract Pool {
 	function _transferIn(uint256 amount) internal {
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
-		}
+		amount = amount * (10**decimals) / UNIT;
 		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
 	}
 
 	function _transferOut(address to, uint256 amount) internal {
 		if (amount == 0 || currency == address(0) || to == address(0)) return;
-		
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
-		}
-		
+		amount = amount * (10**decimals) / UNIT;
 		if (currency == weth) {
 			IWETH(weth).withdraw(amount);
 			payable(to).sendValue(amount);
@@ -241,12 +231,8 @@ contract Pool {
 
 	function _getCurrentBalance() internal view returns(uint256) {
 		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
-		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != 18) {
-			currentBalance = currentBalance * (10**18) / (10**decimals);
-		}
-		return currentBalance;
+		return currentBalance * UNIT / (10**decimals);
 	}
 
 	// Getters
