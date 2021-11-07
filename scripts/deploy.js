@@ -130,11 +130,11 @@ async function main() {
 
 
   // Treasury fee share setup
-  await treasury.setPoolShare(weth.address, 5000);
-  await treasury.setPoolShare(usdc.address, 5000);
+  await treasury.setPoolShare(weth.address, 4500);
+  await treasury.setPoolShare(usdc.address, 5500);
   console.log("set pool shares for treasury");
 
-  await treasury.setCapPoolShare(weth.address, 1000);
+  await treasury.setCapPoolShare(weth.address, 1500);
   await treasury.setCapPoolShare(usdc.address, 1000);
   console.log("set Cap shares for treasury");
 
@@ -188,7 +188,7 @@ async function main() {
       feed: '0x0000000000000000000000000000000000000000',
       maxLeverage: 50,
       oracleMaxDeviation: 2.5,
-      fee: 0.15,
+      fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
     },
@@ -198,7 +198,7 @@ async function main() {
       feed: '0x0000000000000000000000000000000000000000',
       maxLeverage: 100,
       oracleMaxDeviation: 2.5,
-      fee: 0.15,
+      fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
     }

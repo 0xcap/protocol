@@ -64,7 +64,10 @@ contract PoolCAP {
 	function withdraw(uint256 amount) external {
 		
 		require(amount > 0, "!amount");
-		require(amount <= balances[msg.sender], "!balance");
+
+		if (amount >= balances[msg.sender]) {
+			amount = balances[msg.sender];
+		}
 
 		_updateRewards();
 

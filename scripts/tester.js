@@ -65,7 +65,7 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x8E45C0936fa1a65bDaD3222bEFeC6a03C83372cE';
+  const routerAddress = '0x0355B7B8cb128fA5692729Ab3AAa199C1753f726';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const wethAddress = await router.weth();
@@ -75,10 +75,10 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xd710a67624Ad831683C86a48291c597adE30F787';
+  const usdcAddress = '0xD84379CEae14AA33C123Af12424A37803F885889';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0xd753c12650c280383Ce873Cc3a898F6f53973d16';
+  const capAddress = '0xBEc49fA140aCaA83533fB00A2BB19bDdd0290f25';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -228,7 +228,7 @@ async function main() {
 
   // await poolWETH.connect(user).withdraw(parseUnits("0.4"));
   
-  console.log('Pool WETH', formatUnits(await poolWETH.getBalance(user2.address)), formatUnits(await poolRewardsWETH.pendingReward()), formatUnits(await poolWETH.totalSupply()));
+  // console.log('Pool WETH', formatUnits(await poolWETH.getBalance(user2.address)), formatUnits(await poolRewardsWETH.pendingReward()), formatUnits(await poolWETH.totalSupply()));
 
   // // claim rewards
 
@@ -248,6 +248,8 @@ async function main() {
 
   // CAP: stake, unstake, claim rewards
 
+  console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
+  console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
 
   // Treasury
 
