@@ -169,6 +169,11 @@ contract Pool {
 
 		_transferOut(msg.sender, currencyAmountAfterFee);
 
+		// Send fee to this pool's rewards contract
+		uint256 feeAmount = currencyAmount - currencyAmountAfterFee - 1;
+		_transferOut(rewards, feeAmount);
+		IRewards(rewards).notifyRewardReceived(feeAmount);
+
 		emit Withdraw(
 			msg.sender,
 			currency,
