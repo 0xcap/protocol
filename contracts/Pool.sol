@@ -24,7 +24,7 @@ contract Pool {
     address public currency;
     address public rewards; // contract
 
-    uint256 public utilizationMultiplier = 50; // in bps
+    uint256 public utilizationMultiplier = 200; // in bps
 
     uint256 public maxDailyDrawdown = 5000; // 50%
     uint256 public checkpointBalance;
