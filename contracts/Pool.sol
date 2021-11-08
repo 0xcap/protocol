@@ -221,7 +221,7 @@ contract Pool {
 	}
 
 	function _transferOut(address to, uint256 amount, bool sendETH) internal {
-		if (amount == 0 || currency == address(0) || to == address(0)) return;
+		if (amount == 0 || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		amount = amount * (10**decimals) / UNIT;
