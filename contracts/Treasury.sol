@@ -26,7 +26,7 @@ contract Treasury {
 	mapping(address => uint256) private capPoolShare; // currency => bps
 
 	uint256 public constant UNIT = 10**18;
-	
+
 	constructor() {
 		owner = msg.sender;
 	}
@@ -78,6 +78,8 @@ contract Treasury {
 		address destination, 
 		uint256 amount
 	) external onlyOracle {
+		uint256 wethBalance = IERC20(weth).balanceOf(address(this));
+		if (amount > wethBalance) return;
 		IWETH(weth).withdraw(amount);
 		payable(destination).sendValue(amount);
 	}

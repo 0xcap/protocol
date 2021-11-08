@@ -57,6 +57,8 @@ async function main() {
   // If this script is run directly using `node` you may want to call compile
   // manually to make sure everything is compiled
   // await hre.run('compile');
+  
+  const darkOracleAddress = '0x14dc79964da2c08b23698b3d3cc7ca32193d9955';
 
   const provider = hre.ethers.provider;
   const [owner, user, user2, user3] = await ethers.getSigners();
@@ -248,10 +250,16 @@ async function main() {
 
   // // CAP: stake, unstake, claim rewards
 
-  await treasury.sendToken(weth.address, owner.address, parseUnits('0.03'));
+  // await treasury.sendToken(weth.address, owner.address, parseUnits('0.03'));
 
-  console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
-  console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
+  // console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
+  // console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
+
+  // await oracle.setParams(1, parseUnits("0.006"));
+  //console.log('oracle params', (await oracle.requestsPerFunding()).toString());
+  
+  console.log('dark oracle balance', formatUnits(await provider.getBalance(darkOracleAddress)));
+
 
   // Treasury
 
