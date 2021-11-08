@@ -67,7 +67,7 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x4eaB29997D332A666c3C366217Ab177cF9A7C436';
+  const routerAddress = '0x6e0a5725dD4071e46356bD974E13F35DbF9ef367';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const wethAddress = await router.weth();
@@ -77,10 +77,10 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xC32609C91d6B6b51D48f2611308FEf121B02041f';
+  const usdcAddress = '0xb830887eE23d3f9Ed8c27dbF7DcFe63037765475';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0xBEe6FFc1E8627F51CcDF0b4399a1e1abc5165f15';
+  const capAddress = '0xF9c0bF1CFAAB883ADb95fed4cfD60133BffaB18a';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -252,11 +252,11 @@ async function main() {
 
   // await treasury.sendToken(weth.address, owner.address, parseUnits('0.03'));
 
-  // console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
+  console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
   // console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
 
-  // await oracle.setParams(1, parseUnits("0.006"));
-  //console.log('oracle params', (await oracle.requestsPerFunding()).toString());
+  await oracle.setParams(1, parseUnits("0.006"));
+  console.log('oracle params', (await oracle.requestsPerFunding()).toString(), (await oracle.requestsSinceFunding()).toString(), (await oracle.costPerRequest()).toString());
   
   console.log('dark oracle balance', formatUnits(await provider.getBalance(darkOracleAddress)));
 
