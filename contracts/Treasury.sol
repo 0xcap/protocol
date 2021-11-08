@@ -25,6 +25,8 @@ contract Treasury {
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capPoolShare; // currency => bps
 
+	uint256 public constant UNIT = 10**18;
+	
 	constructor() {
 		owner = msg.sender;
 	}
@@ -62,12 +64,12 @@ contract Treasury {
 
 		// Send poolShare to pool-currency rewards contract
 		uint256 poolReward = poolShare[currency] * amount / 10**4;
-		_transferOut(currency, poolRewards, poolReward);
+		_transferOut(currency, poolRewards, poolReward, false);
 		IRewards(poolRewards).notifyRewardReceived(poolReward);
 
 		// Send capPoolShare to cap-currency rewards contract
 		uint256 capReward = capPoolShare[currency] * amount / 10**4;
-		_transferOut(currency, capRewards, capReward);
+		_transferOut(currency, capRewards, capReward, false);
 		IRewards(capRewards).notifyRewardReceived(capReward);
 
 	}
@@ -85,7 +87,7 @@ contract Treasury {
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
-		_transferOut(token, destination, amount);
+		_transferOut(token, destination, amount, true);
 	}
 
 	// To receive ETH from WETH
@@ -94,13 +96,17 @@ contract Treasury {
 
 	// Utils
 
-	function _transferOut(address currency, address to, uint256 amount) internal {
+	function _transferOut(address currency, address to, uint256 amount, bool sendETH) internal {
+		if (amount == 0 || currency == address(0) || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
-		if (decimals != 18) {
-			amount = amount * (10**decimals) / (10**18);
+		amount = amount * (10**decimals) / UNIT;
+		if (currency == weth && sendETH) {
+			IWETH(weth).withdraw(amount);
+			payable(to).sendValue(amount);
+		} else {
+			IERC20(currency).safeTransfer(to, amount);
 		}
-		IERC20(currency).safeTransfer(to, amount);
 	}
 
 	// Getters

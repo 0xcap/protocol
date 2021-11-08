@@ -128,7 +128,6 @@ async function main() {
   await capRewardsUSDC.deployed();
   console.log("capRewardsUSDC deployed to:", capRewardsUSDC.address);
 
-
   // Treasury fee share setup
   await treasury.setPoolShare(weth.address, 4500);
   await treasury.setPoolShare(usdc.address, 5500);

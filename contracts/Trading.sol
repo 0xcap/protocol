@@ -204,6 +204,14 @@ contract Trading {
 
 		require(margin >= minMargin[currency], "!min-margin");
 
+		// Check pool utlization
+		_updateOpenInterest(currency, size, false);
+
+		address pool = IRouter(router).getPool(currency);
+		uint256 utilization = IPool(pool).getUtilization();
+
+		require(utilization < 10**4, "!utilization");
+
 		// Add position
 		nextPositionId++;
 		positions[nextPositionId] = Position({
@@ -244,7 +252,6 @@ contract Trading {
 		address currency = position.currency;
 		
 		_sendFeeToTreasury(currency, position.fee);
-		_updateOpenInterest(currency, position.size, false);
 
 		position.price = price;
 
@@ -278,6 +285,8 @@ contract Trading {
 
 		address currency = position.currency;
 		uint256 fee = position.fee;
+
+		_updateOpenInterest(currency, position.size, true);
 
 		delete positions[positionId];
 

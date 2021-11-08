@@ -56,7 +56,7 @@ contract Rewards {
 
 	// Methods
 
-	function notifyRewardReceived(uint256 amount) external onlyTreasury {
+	function notifyRewardReceived(uint256 amount) external onlyTreasuryOrPool {
 		pendingReward += amount; // 18 decimals
 	}
 
@@ -142,8 +142,8 @@ contract Rewards {
 		_;
 	}
 
-	modifier onlyTreasury() {
-		require(msg.sender == treasury, "!treasury");
+	modifier onlyTreasuryOrPool() {
+		require(msg.sender == treasury || msg.sender == pool, "!treasury|pool");
 		_;
 	}
 

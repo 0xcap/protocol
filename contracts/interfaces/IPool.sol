@@ -8,5 +8,8 @@ interface IPool {
     
     function updateOpenInterest(uint256 amount, bool isDecrease) external;
 
+    function getUtilization() external view returns (uint256);
+
     function getBalance(address account) external view returns (uint256);
+
 }

@@ -24,7 +24,7 @@ contract Pool {
     address public currency;
     address public rewards; // contract
 
-    uint256 public utilizationMultiplier; // in bps
+    uint256 public utilizationMultiplier = 50; // in bps
 
     uint256 public maxDailyDrawdown = 5000; // 50%
     uint256 public checkpointBalance;
@@ -40,8 +40,7 @@ contract Pool {
 
     uint256 public openInterest;
 
-    uint256 public constant UNIT_DECIMALS = 18;
-	uint256 public constant UNIT = 10**UNIT_DECIMALS;
+	uint256 public constant UNIT = 10**18;
 
     // Events
     event Deposit(
@@ -167,11 +166,11 @@ contract Pool {
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;
 
-		_transferOut(msg.sender, currencyAmountAfterFee);
+		_transferOut(msg.sender, currencyAmountAfterFee, true);
 
 		// Send fee to this pool's rewards contract
 		uint256 feeAmount = currencyAmount - currencyAmountAfterFee;
-		_transferOut(rewards, feeAmount);
+		_transferOut(rewards, feeAmount, false);
 		IRewards(rewards).notifyRewardReceived(feeAmount);
 
 		emit Withdraw(
@@ -204,7 +203,7 @@ contract Pool {
 			revert("!drawdown");
 		}
 
-		_transferOut(destination, amount);
+		_transferOut(destination, amount, true);
 
 	}
 
@@ -221,12 +220,12 @@ contract Pool {
 		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
 	}
 
-	function _transferOut(address to, uint256 amount) internal {
+	function _transferOut(address to, uint256 amount, bool sendETH) internal {
 		if (amount == 0 || currency == address(0) || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		amount = amount * (10**decimals) / UNIT;
-		if (currency == weth) {
+		if (currency == weth && sendETH) {
 			IWETH(weth).withdraw(amount);
 			payable(to).sendValue(amount);
 		} else {
@@ -244,6 +243,7 @@ contract Pool {
 
 	function getUtilization() public view returns(uint256) {
 		uint256 currentBalance = _getCurrentBalance();
+		if (currentBalance == 0) return 0;
 		return openInterest * utilizationMultiplier / currentBalance; // in bps
 	}
 
