@@ -26,10 +26,6 @@ contract Pool {
 
     uint256 public utilizationMultiplier = 200; // in bps
 
-    uint256 public maxDailyDrawdown = 5000; // 50%
-    uint256 public checkpointBalance;
-    uint256 public checkpointTimestamp;
-
     uint256 public maxCap = 1000000 ether;
 
     mapping(address => uint256) private balances; // account => amount staked
@@ -75,13 +71,11 @@ contract Pool {
 	}
 
 	function setParams(
-		uint256 _maxDailyDrawdown,
 		uint256 _minDepositTime,
 		uint256 _utilizationMultiplier,
 		uint256 _maxCap,
 		uint256 _withdrawFee
 	) external onlyOwner {
-		maxDailyDrawdown = _maxDailyDrawdown;
 		minDepositTime = _minDepositTime;
 		utilizationMultiplier = _utilizationMultiplier;
 		maxCap = _maxCap;
@@ -183,28 +177,10 @@ contract Pool {
 	}
 
 	function creditUserProfit(address destination, uint256 amount) external onlyTrading {
-		
 		if (amount == 0) return;
-
 		uint256 currentBalance = _getCurrentBalance();
-
 		require(amount < currentBalance, "!balance");
-
-		// Check max drawdown
-
-		if (checkpointBalance == 0) {
-			checkpointBalance = currentBalance;
-			checkpointTimestamp = block.timestamp;
-		}
-		if (block.timestamp >= checkpointTimestamp + 1 days) {
-			checkpointTimestamp = block.timestamp;
-		}
-		if (currentBalance - amount < checkpointBalance * (10**4 - maxDailyDrawdown) / 10**4) {
-			revert("!drawdown");
-		}
-
 		_transferOut(destination, amount, true);
-
 	}
 
 	// To receive ETH from WETH

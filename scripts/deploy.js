@@ -44,7 +44,11 @@ async function main() {
   return;
   */
 
-  const darkOracleAddress = '0x14dc79964da2c08b23698b3d3cc7ca32193d9955';
+  // // Local
+  // const darkOracleAddress = '0x14dc79964da2c08b23698b3d3cc7ca32193d9955';
+
+  // Arbitrum
+  const darkOracleAddress = '0x17f81a65F922dC0e50Fc4375E33A36Cb8089850c';
 
   const account = await signer.getAddress();
   console.log('account', account);
@@ -74,20 +78,27 @@ async function main() {
   await treasury.deployed();
   console.log("Treasury deployed to:", treasury.address);
 
-  // WETH, CAP, USDC mock tokens (local only)
-  const WETH = await hre.ethers.getContractFactory("WETH");
-  const weth = await WETH.deploy();
-  await weth.deployed();
-  console.log("weth deployed to:", weth.address);
+  // // WETH, CAP, USDC mock tokens (local only)
+  // const WETH = await hre.ethers.getContractFactory("WETH");
+  // const weth = await WETH.deploy();
+  // await weth.deployed();
 
-  const MockToken = await hre.ethers.getContractFactory("MockToken");
-  const cap = await MockToken.deploy("Cap", "CAP", 18);
-  await cap.deployed();
-  console.log("cap deployed to:", cap.address);
+  const weth = {address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1'};
+  console.log("weth:", weth.address);
 
-  const usdc = await MockToken.deploy("USDC", "USDC", 6);
-  await usdc.deployed();
-  console.log("usdc deployed to:", usdc.address);
+  // const MockToken = await hre.ethers.getContractFactory("MockToken");
+  // const cap = await MockToken.deploy("Cap", "CAP", 18);
+  // await cap.deployed();
+
+  const cap = {address: '0x031d35296154279DC1984dCD93E392b1f946737b'};
+  console.log("cap:", cap.address);
+
+  // const usdc = await MockToken.deploy("USDC", "USDC", 6);
+  // await usdc.deployed();
+
+  const usdc = {address: '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8'};
+  console.log("usdc:", usdc.address);
+
 
   // PoolCAP
   const PoolCAP = await hre.ethers.getContractFactory("PoolCAP");
@@ -129,11 +140,11 @@ async function main() {
   console.log("capRewardsUSDC deployed to:", capRewardsUSDC.address);
 
   // Treasury fee share setup
-  await treasury.setPoolShare(weth.address, 4500);
-  await treasury.setPoolShare(usdc.address, 5500);
+  await treasury.setPoolShare(weth.address, 5000);
+  await treasury.setPoolShare(usdc.address, 5000);
   console.log("set pool shares for treasury");
 
-  await treasury.setCapPoolShare(weth.address, 1500);
+  await treasury.setCapPoolShare(weth.address, 1000);
   await treasury.setCapPoolShare(usdc.address, 1000);
   console.log("set Cap shares for treasury");
 
@@ -215,9 +226,9 @@ async function main() {
     console.log('Added product ' + p.symbol);
   }
 
-  // Mint some CAP, USDC
-  await usdc.mint(parseUnits("100000", 6));
-  await cap.mint(parseUnits("1000"));
+  // // Mint some CAP, USDC
+  // await usdc.mint(parseUnits("100000", 6));
+  // await cap.mint(parseUnits("1000"));
 
 }
 

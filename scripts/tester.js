@@ -252,13 +252,13 @@ async function main() {
 
   // await treasury.sendToken(weth.address, owner.address, parseUnits('0.03'));
 
-  console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
-  // console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
+  // console.log('treasury weth', formatUnits(await weth.balanceOf(treasury.address)));
+  // // console.log('treasury usdc', formatUnits(await usdc.balanceOf(treasury.address), 6));
 
-  await oracle.setParams(1, parseUnits("0.006"));
-  console.log('oracle params', (await oracle.requestsPerFunding()).toString(), (await oracle.requestsSinceFunding()).toString(), (await oracle.costPerRequest()).toString());
+  // await oracle.setParams(1, parseUnits("0.006"));
+  // console.log('oracle params', (await oracle.requestsPerFunding()).toString(), (await oracle.requestsSinceFunding()).toString(), (await oracle.costPerRequest()).toString());
   
-  console.log('dark oracle balance', formatUnits(await provider.getBalance(darkOracleAddress)));
+  // console.log('dark oracle balance', formatUnits(await provider.getBalance(darkOracleAddress)));
 
 
   // Treasury
@@ -300,7 +300,6 @@ async function main() {
   // Owner methods
 
   // await poolWETH.setParams(
-  //   4000,
   //   180,
   //   100,
   //   parseUnits("100"),
@@ -309,11 +308,12 @@ async function main() {
 
   // console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), (await poolWETH.minDepositTime()).toString(), (await poolWETH.utilizationMultiplier()).toString(), (await poolWETH.maxCap()).toString(), (await poolWETH.withdrawFee()).toString());
 
+  console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), formatUnits(await poolWETH.checkpointBalance()), (await poolWETH.checkpointTimestamp()).toString(), formatUnits(await weth.balanceOf(poolWETH.address)));
+
   // console.log('pool WETH utilization', formatUnits(await poolWETH.openInterest()), (await poolWETH.getUtilization()).toString());
   // console.log('pool WETH rewards balance', formatUnits(await weth.balanceOf(poolRewardsWETH.address)), formatUnits(await provider.getBalance(poolRewardsWETH.address)));
 
   // await poolUSDC.setParams(
-  //   4000,
   //   180,
   //   100,
   //   parseUnits("100000"),
