@@ -192,7 +192,9 @@ async function main() {
     {
       symbol: 'ETH-USD',
       id: 1,
+      feed: '0x0000000000000000000000000000000000000000',
       maxLeverage: 50,
+      oracleMaxDeviation: 2.5,
       fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
@@ -200,7 +202,9 @@ async function main() {
     {
       symbol: 'BTC-USD',
       id: 2,
+      feed: '0x0000000000000000000000000000000000000000',
       maxLeverage: 50,
+      oracleMaxDeviation: 2.5,
       fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
@@ -209,7 +213,9 @@ async function main() {
 
   for (const p of products) {
     await trading.addProduct(p.id, [
+      p.feed,
       parseUnits(""+p.maxLeverage),
+      parseInt(p.oracleMaxDeviation * 100),
       parseInt(p.liquidationThreshold * 100),
       parseInt(p.fee * 10000),
       parseInt(p.interest * 100),
@@ -220,37 +226,6 @@ async function main() {
   // // Mint some CAP, USDC
   // await usdc.mint(parseUnits("100000", 6));
   // await cap.mint(parseUnits("1000"));
-
-
-  /// GAS TESTS
-
-  let tx, receipt;
-  
-  // submit order (ETH)
-  tx = await trading.submitNewPosition(
-    weth.address, // currency
-    1, // productId
-    0, // margin is sent as value for WETH
-    parseUnits("5"), // size
-    true, // isLong
-    {value: parseUnits("1")} // margin
-  );
-  console.log('Submitted order long 1 ETH margin at 20x (WETH, ETH-USD)');
-  receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 334911, 317811 / 244768 / 194000
-
-  const posId = await trading.nextPositionId();
-  console.log('Position', posId.toString());
-
-  // // submit partial close order
-  // tx = await trading.submitCloseOrder(
-  //   posId, // position id
-  //   parseUnits("1"), // size to close
-  //   {value: parseUnits("0.0016")} // fee - to be calculated correctly. can be anything above the expected amount
-  // );
-  // console.log('Submitted close order for 1 ETH on position ', posId);
-  // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 235604
 
 }
 

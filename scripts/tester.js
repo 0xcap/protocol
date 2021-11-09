@@ -67,7 +67,7 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x6e0a5725dD4071e46356bD974E13F35DbF9ef367';
+  const routerAddress = '0xC3549920b94a795D75E6C003944943D552C46F97';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const wethAddress = await router.weth();
@@ -77,10 +77,10 @@ async function main() {
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xb830887eE23d3f9Ed8c27dbF7DcFe63037765475';
+  const usdcAddress = '0xAA5c5496e2586F81d8d2d0B970eB85aB088639c2';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0xF9c0bF1CFAAB883ADb95fed4cfD60133BffaB18a';
+  const capAddress = '0x0aD6371dd7E9923d9968D63Eb8B9858c700abD9d';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
@@ -97,8 +97,8 @@ async function main() {
   console.log('Contracts set', router.address);
 
   // // Mint some CAP, USDC
-  // await usdc.connect(user2).mint(parseUnits("100000", 6));
-  // await cap.connect(user2).mint(parseUnits("1000"));
+  // await usdc.mint(parseUnits("100000", 6));
+  // await cap.mint(parseUnits("1000"));
 
   let tx, receipt;
 
@@ -129,7 +129,7 @@ async function main() {
   // );
   // console.log('Submitted order long 1 ETH margin at 20x (WETH, ETH-USD)');
   // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 279690
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 334911, 317811 / 244768
 
   // // Router dark oracle address
   // console.log('ro', await router.darkOracle());
@@ -139,18 +139,18 @@ async function main() {
   // console.log('WETH ETH balance', formatUnits(await provider.getBalance(weth.address)));
   // console.log('Trading contract balance (WETH)', formatUnits(await weth.balanceOf(trading.address)));
 
-  // const posId = await trading.nextPositionId();
-  // console.log('Position', posId.toString(), formatPosition((await trading.getPositions([posId]))[0]));
+  const posId = await trading.nextPositionId();
+  console.log('Position', posId.toString(), formatPosition((await trading.getPositions([posId]))[0]));
   
-  // // submit partial close order
-  // tx = await trading.connect(user).submitCloseOrder(
-  //   posId, // position id
-  //   parseUnits("1"), // size to close
-  //   {value: parseUnits("0.0016")} // fee - to be calculated correctly. can be anything above the expected amount
-  // );
-  // console.log('Submitted close order for 1 ETH on position ', posId);
-  // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 235604
+  // submit partial close order
+  tx = await trading.submitCloseOrder(
+    posId, // position id
+    parseUnits("1"), // size to close
+    {value: parseUnits("0.001")} // fee - to be calculated correctly. can be anything above the expected amount
+  );
+  console.log('Submitted close order for 1 ETH on position ', posId);
+  receipt = await provider.getTransactionReceipt(tx.hash);
+  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 235604
 
   // const closeId = await trading.nextCloseOrderId();
   // console.log('Close Order', closeId.toString(), formatOrder((await trading.getCloseOrders([closeId]))[0]));
@@ -308,7 +308,7 @@ async function main() {
 
   // console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), (await poolWETH.minDepositTime()).toString(), (await poolWETH.utilizationMultiplier()).toString(), (await poolWETH.maxCap()).toString(), (await poolWETH.withdrawFee()).toString());
 
-  console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), formatUnits(await poolWETH.checkpointBalance()), (await poolWETH.checkpointTimestamp()).toString(), formatUnits(await weth.balanceOf(poolWETH.address)));
+  // console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), formatUnits(await poolWETH.checkpointBalance()), (await poolWETH.checkpointTimestamp()).toString(), formatUnits(await weth.balanceOf(poolWETH.address)));
 
   // console.log('pool WETH utilization', formatUnits(await poolWETH.openInterest()), (await poolWETH.getUtilization()).toString());
   // console.log('pool WETH rewards balance', formatUnits(await weth.balanceOf(poolRewardsWETH.address)), formatUnits(await provider.getBalance(poolRewardsWETH.address)));

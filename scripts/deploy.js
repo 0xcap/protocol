@@ -195,7 +195,7 @@ async function main() {
     {
       symbol: 'ETH-USD',
       id: 1,
-      feed: '0x0000000000000000000000000000000000000000',
+      feed: '0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612',
       maxLeverage: 50,
       oracleMaxDeviation: 2.5,
       fee: 0.1,
@@ -205,8 +205,8 @@ async function main() {
     {
       symbol: 'BTC-USD',
       id: 2,
-      feed: '0x0000000000000000000000000000000000000000',
-      maxLeverage: 100,
+      feed: '0x6ce185860a4963106506C203335A2910413708e9',
+      maxLeverage: 50,
       oracleMaxDeviation: 2.5,
       fee: 0.1,
       interest: 16,

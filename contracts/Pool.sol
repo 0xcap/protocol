@@ -24,7 +24,7 @@ contract Pool {
     address public currency;
     address public rewards; // contract
 
-    uint256 public utilizationMultiplier = 200; // in bps
+    uint256 public utilizationMultiplier = 100; // in bps
 
     uint256 public maxCap = 1000000 ether;
 

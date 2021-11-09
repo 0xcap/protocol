@@ -16,7 +16,7 @@ contract Oracle {
 
 	// Variables
 	uint256 public requestsPerFunding = 100;
-	uint256 public costPerRequest = 6 * 10**14; // 0.0006 ETH
+	uint256 public costPerRequest = 3 * 10**15; // 0.003 ETH
 	uint256 public requestsSinceFunding;
 
 	event SettlementError(
@@ -108,10 +108,11 @@ contract Oracle {
 	}
 
 	function liquidatePositions(
+		address currency,
 		uint256[] calldata positionIds,
 		uint256[] calldata _prices
 	) external onlyDarkOracle {
-		ITrading(trading).liquidatePositions(positionIds, _prices);
+		ITrading(trading).liquidatePositions(currency, positionIds, _prices);
 		_tallyOracleRequests(positionIds.length);
 	}
 

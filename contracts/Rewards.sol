@@ -5,6 +5,7 @@ import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
+import "./interfaces/ITrading.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IWETH.sol";
 
@@ -15,6 +16,7 @@ contract Rewards {
 
     address public owner;
 	address public router;
+	address public trading;
 	address public treasury;
 
 	address public pool; // pool contract associated with these rewards
@@ -50,6 +52,7 @@ contract Rewards {
 
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
+		trading = IRouter(router).trading();
 		treasury = IRouter(router).treasury();
 		weth = IRouter(router).weth();
 	}
@@ -63,6 +66,8 @@ contract Rewards {
 	function updateRewards(address account) public {
 
 		if (account == address(0)) return;
+
+		ITrading(trading).distributeFees(currency);
 
 		uint256 supply = IPool(pool).totalSupply();
 
