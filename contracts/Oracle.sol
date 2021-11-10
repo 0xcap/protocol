@@ -20,8 +20,11 @@ contract Oracle {
 	uint256 public requestsSinceFunding;
 
 	event SettlementError(
-		uint256 indexed orderId,
-		bool indexed isClose,
+		address indexed user,
+		address currency,
+		bytes32 productId,
+		bool isLong,
+		bool isClose,
 		string reason
 	);
 
@@ -53,67 +56,54 @@ contract Oracle {
 	// Methods
 
 	function settleOrders(
-		uint256[] calldata positionIds,
-		uint256[] calldata positionPrices,
-		uint256[] calldata orderIds,
-		uint256[] calldata orderPrices
+		address[] calldata users,
+		bytes32[] calldata productIds,
+		address[] calldata currencies,
+		bool[] calldata directions,
+		uint256[] calldata prices
 	) external onlyDarkOracle {
 
-		if (positionIds.length > 0) {
+		for (uint256 i = 0; i < users.length; i++) {
 
-			for (uint256 i = 0; i < positionIds.length; i++) {
+			address user = users[i];
+			address currency = currencies[i];
+			bytes32 productId = productIds[i];
+			bool isLong = directions[i];
 
-				uint256 positionId = positionIds[i];
-				uint256 price = positionPrices[i];
+			try ITrading(trading).settleOrder(user, productId, currency, isLong, prices[i]) {
 
-				try ITrading(trading).settleNewPosition(positionId, price) {
-
-				} catch Error(string memory reason) {
-					ITrading(trading).cancelPosition(positionId);
-					emit SettlementError(
-						positionId,
-						false,
-						reason
-					);
-				}
-
+			} catch Error(string memory reason) {
+				emit SettlementError(
+					user,
+					currency,
+					productId,
+					isLong,
+					false,
+					reason
+				);
 			}
 
 		}
 
-		if (orderIds.length > 0) {
-
-			for (uint256 i = 0; i < orderIds.length; i++) {
-
-				uint256 orderId = orderIds[i];
-				uint256 price = orderPrices[i];
-
-				try ITrading(trading).settleCloseOrder(orderId, price) {
-
-				} catch Error(string memory reason) {
-					ITrading(trading).cancelOrder(orderId);
-					emit SettlementError(
-						orderId,
-						true,
-						reason
-					);
-				}
-
-			}
-
-		}
-
-		_tallyOracleRequests(positionIds.length + orderIds.length);
+		_tallyOracleRequests(users.length);
 
 	}
 
-	function liquidatePositions(
-		address currency,
-		uint256[] calldata positionIds,
-		uint256[] calldata _prices
+	function liquidatePosition(
+		address[] calldata users,
+		address[] calldata currencies,
+		bytes32[] calldata productIds,
+		bool[] calldata directions,
+		uint256[] calldata prices
 	) external onlyDarkOracle {
-		ITrading(trading).liquidatePositions(currency, positionIds, _prices);
-		_tallyOracleRequests(positionIds.length);
+		for (uint256 i = 0; i < users.length; i++) {
+			address user = users[i];
+			address currency = currencies[i];
+			bytes32 productId = productIds[i];
+			bool isLong = directions[i];
+			ITrading(trading).liquidatePosition(currency, user, productId, isLong, prices[i]);
+		}
+		_tallyOracleRequests(users.length);
 	}
 
 	function _tallyOracleRequests(uint256 newRequests) internal {

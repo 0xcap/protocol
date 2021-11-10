@@ -19,9 +19,6 @@ contract Router {
 	address public treasury;
 	address public darkOracle;
 
-	// Native currency
-	address public weth;
-
 	address[] public currencies;
 
 	mapping(address => uint8) decimals;
@@ -75,15 +72,13 @@ contract Router {
 		address _trading,
 		address _capPool,
 		address _oracle,
-		address _darkOracle,
-		address _weth
+		address _darkOracle
 	) external onlyOwner {
 		treasury = _treasury;
 		trading = _trading;
 		capPool = _capPool;
 		oracle = _oracle;
 		darkOracle = _darkOracle;
-		weth = _weth;
 	}
 
 	function setPool(address currency, address _contract) external onlyOwner {

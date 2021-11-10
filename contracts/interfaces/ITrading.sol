@@ -2,17 +2,11 @@
 pragma solidity ^0.8.0;
 
 interface ITrading {
+
     function distributeFees(address currency) external;
     
-    function settleNewPosition(uint256 positionId, uint256 price) external;
+    function settleOrder(address user, bytes32 productId, address currency, bool isLong, uint256 price) external;
 
-    function cancelPosition(uint256 positionId) external;
+    function liquidatePosition(address user, address currency, bytes32 productId, bool isLong, uint256 price) external;
 
-    function settleCloseOrder(uint256 positionId, uint256 price) external;
-
-    function cancelOrder(uint256 positionId) external;
-
-    function liquidatePositions(address currency, uint256[] calldata positionIds, uint256[] calldata prices) external;
-
-    function getActiveMargin(address currency) external view returns (uint256);
 }

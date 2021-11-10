@@ -6,7 +6,6 @@ import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/IRewards.sol";
-import "./interfaces/IWETH.sol";
 
 // This contract should be relatively upgradeable = no important state
 
@@ -20,7 +19,6 @@ contract Treasury {
 	address public router;
 	address public trading;
 	address public oracle;
-	address public weth;
 
 	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
 	mapping(address => uint256) private capPoolShare; // currency => bps
@@ -41,7 +39,6 @@ contract Treasury {
 		router = _router;
 		oracle = IRouter(router).oracle();
 		trading = IRouter(router).trading();
-		weth = IRouter(router).weth();
 	}
 
 	function setPoolShare(address currency, uint256 share) external onlyOwner {
@@ -64,12 +61,12 @@ contract Treasury {
 
 		// Send poolShare to pool-currency rewards contract
 		uint256 poolReward = poolShare[currency] * amount / 10**4;
-		_transferOut(currency, poolRewards, poolReward, false);
+		_transferOut(currency, poolRewards, poolReward);
 		IRewards(poolRewards).notifyRewardReceived(poolReward);
 
 		// Send capPoolShare to cap-currency rewards contract
 		uint256 capReward = capPoolShare[currency] * amount / 10**4;
-		_transferOut(currency, capRewards, capReward, false);
+		_transferOut(currency, capRewards, capReward);
 		IRewards(capRewards).notifyRewardReceived(capReward);
 
 	}
@@ -78,33 +75,31 @@ contract Treasury {
 		address destination, 
 		uint256 amount
 	) external onlyOracle {
-		uint256 wethBalance = IWETH(weth).balanceOf(address(this));
-		if (amount > wethBalance) return;
-		IWETH(weth).withdraw(amount);
+		uint256 ethBalance = address(this).balance;
+		if (amount > ethBalance) return;
 		payable(destination).sendValue(amount);
 	}
 
-	function sendToken(
+	function sendFunds(
 		address token, 
 		address destination, 
 		uint256 amount
 	) external onlyOwner {
-		_transferOut(token, destination, amount, true);
+		_transferOut(token, destination, amount);
 	}
 
-	// To receive ETH from WETH
+	// To receive ETH
 	fallback() external payable {}
 	receive() external payable {}
 
 	// Utils
 
-	function _transferOut(address currency, address to, uint256 amount, bool sendETH) internal {
-		if (amount == 0 || currency == address(0) || to == address(0)) return;
+	function _transferOut(address currency, address to, uint256 amount) internal {
+		if (amount == 0 || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		amount = amount * (10**decimals) / UNIT;
-		if (currency == weth && sendETH) {
-			IWETH(weth).withdraw(amount);
+		if (currency == address(0)) {
 			payable(to).sendValue(amount);
 		} else {
 			IERC20(currency).safeTransfer(to, amount);

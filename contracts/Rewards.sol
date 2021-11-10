@@ -7,7 +7,6 @@ import "./libraries/Address.sol";
 import "./interfaces/IRouter.sol";
 import "./interfaces/ITrading.sol";
 import "./interfaces/IPool.sol";
-import "./interfaces/IWETH.sol";
 
 contract Rewards {
 
@@ -21,7 +20,6 @@ contract Rewards {
 
 	address public pool; // pool contract associated with these rewards
 	address public currency; // rewards paid in this
-	address public weth;
 
 	uint256 public cumulativeRewardPerTokenStored;
 	uint256 public pendingReward;
@@ -54,7 +52,6 @@ contract Rewards {
 		router = _router;
 		trading = IRouter(router).trading();
 		treasury = IRouter(router).treasury();
-		weth = IRouter(router).weth();
 	}
 
 	// Methods
@@ -123,7 +120,7 @@ contract Rewards {
 		
 	}
 
-	// To receive ETH from WETH
+	// To receive ETH
 	fallback() external payable {}
 	receive() external payable {}
 
@@ -134,8 +131,7 @@ contract Rewards {
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		amount = amount * (10**decimals) / UNIT;
-		if (currency == weth) {
-			IWETH(weth).withdraw(amount);
+		if (currency == address(0)) {
 			payable(to).sendValue(amount);
 		} else {
 			IERC20(currency).safeTransfer(to, amount);

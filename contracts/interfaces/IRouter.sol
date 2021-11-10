@@ -8,8 +8,6 @@ interface IRouter {
 
     function oracle() external view returns (address);
 
-    function weth() external view returns (address);
-
     function treasury() external view returns (address);
 
     function darkOracle() external view returns (address);

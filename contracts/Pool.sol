@@ -6,7 +6,6 @@ import "./libraries/Address.sol";
 
 import "./interfaces/IRouter.sol";
 import "./interfaces/IRewards.sol";
-import "./interfaces/IWETH.sol";
 
 contract Pool {
 
@@ -16,7 +15,6 @@ contract Pool {
     // Contracts
 	address public owner;
 	address public router;
-	address public weth;
 	address public trading;
 
 	uint256 public withdrawFee = 30; // 0.3%
@@ -66,7 +64,6 @@ contract Pool {
 	function setRouter(address _router) external onlyOwner {
 		router = _router;
 		trading = IRouter(router).trading();
-		weth = IRouter(router).weth();
 		rewards = IRouter(router).getPoolRewards(currency);
 	}
 
@@ -101,9 +98,8 @@ contract Pool {
 
 		uint256 currentBalance = _getCurrentBalance();
 
-		if (currency == weth) {
+		if (currency == address(0)) {
 			amount = msg.value;
-			IWETH(currency).deposit{value: amount}();
 		} else {
 			_transferIn(amount);
 		}
@@ -160,11 +156,11 @@ contract Pool {
 		totalSupply -= amount;
 		balances[msg.sender] -= amount;
 
-		_transferOut(msg.sender, currencyAmountAfterFee, true);
+		_transferOut(msg.sender, currencyAmountAfterFee);
 
 		// Send fee to this pool's rewards contract
 		uint256 feeAmount = currencyAmount - currencyAmountAfterFee;
-		_transferOut(rewards, feeAmount, false);
+		_transferOut(rewards, feeAmount);
 		IRewards(rewards).notifyRewardReceived(feeAmount);
 
 		emit Withdraw(
@@ -180,10 +176,10 @@ contract Pool {
 		if (amount == 0) return;
 		uint256 currentBalance = _getCurrentBalance();
 		require(amount < currentBalance, "!balance");
-		_transferOut(destination, amount, true);
+		_transferOut(destination, amount);
 	}
 
-	// To receive ETH from WETH
+	// To receive ETH
 	fallback() external payable {}
 	receive() external payable {}
 
@@ -196,13 +192,12 @@ contract Pool {
 		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
 	}
 
-	function _transferOut(address to, uint256 amount, bool sendETH) internal {
+	function _transferOut(address to, uint256 amount) internal {
 		if (amount == 0 || to == address(0)) return;
 		// adjust decimals
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		amount = amount * (10**decimals) / UNIT;
-		if (currency == weth && sendETH) {
-			IWETH(weth).withdraw(amount);
+		if (currency == address(0)) {
 			payable(to).sendValue(amount);
 		} else {
 			IERC20(currency).safeTransfer(to, amount);
@@ -210,7 +205,12 @@ contract Pool {
 	}
 
 	function _getCurrentBalance() internal view returns(uint256) {
-		uint256 currentBalance = IERC20(currency).balanceOf(address(this));
+		uint256 currentBalance;
+		if (currency == address(0)) {
+			currentBalance = address(this).balance;
+		} else {
+			currentBalance = IERC20(currency).balanceOf(address(this));
+		}
 		uint256 decimals = IRouter(router).getDecimals(currency);
 		return currentBalance * UNIT / (10**decimals);
 	}
