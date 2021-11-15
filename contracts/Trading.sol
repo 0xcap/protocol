@@ -75,11 +75,13 @@ contract Trading {
 
 	uint256 public constant PRICE_DECIMALS = 8;
 
+	// TODO: event indexed
+
 	// Events
 	event NewOrder(
-		bytes32 key,
-		address user,
-		bytes32 productId,
+		bytes32 indexed key,
+		address indexed user,
+		bytes32 indexed productId,
 		address currency,
 		bool isLong,
 		uint256 margin,
@@ -88,9 +90,9 @@ contract Trading {
 	);
 
 	event PositionUpdated(
-		bytes32 key,
-		address user,
-		bytes32 productId,
+		bytes32 indexed key,
+		address indexed user,
+		bytes32 indexed productId,
 		address currency,
 		bool isLong,
 		uint256 margin,
@@ -99,9 +101,9 @@ contract Trading {
 	);
 
 	event ClosePosition(
-		bytes32 key,
-		address user,
-		bytes32 productId,
+		bytes32 indexed key,
+		address indexed user,
+		bytes32 indexed productId,
 		address currency,
 		bool isLong,
 		uint256 price,
@@ -281,10 +283,12 @@ contract Trading {
 			_transferIn(currency, fee);
 		}
 
+		uint256 margin = size * uint256(position.margin) / uint256(position.size);
+
 		orders[key] = Order({
 			isClose: true,
 			size: uint64(size),
-			margin: 0 // not needed for close order?
+			margin: uint64(margin)
 		});
 
 		emit NewOrder(
@@ -383,19 +387,26 @@ contract Trading {
 
 		} else {
 
-			// Validate price, returns 18 decimals
+			// Validate price, returns 8 decimals
 			price = _validatePrice(price);
 
 			Position storage position = positions[key];
 
-			uint256 averagePrice = (position.size * position.price + order.size * price) / (position.size + order.size);
+			console.log('a', position.size, position.price);
+			console.log('b', order.size, price, order.margin);
+
+			uint256 averagePrice = (uint256(position.size) * uint256(position.price) + uint256(order.size) * uint256(price)) / (uint256(position.size) + uint256(order.size));
+
+			console.log('averagePrice', averagePrice);
 
 			if (position.timestamp == 0) {
 				position.timestamp = uint64(block.timestamp);
 			}
 
-			position.size += order.size;
-			position.margin += order.margin;
+			console.log('position.timestamp', position.timestamp);
+
+			position.size += uint64(order.size);
+			position.margin += uint64(order.margin);
 			position.price = uint64(averagePrice);
 
 			delete orders[key];
@@ -708,6 +719,15 @@ contract Trading {
 			_orders[i] = orders[keys[i]];
 		}
 		return _orders;
+	}
+
+	function getPositions(bytes32[] calldata keys) external view returns(Position[] memory _positions) {
+		uint256 length = keys.length;
+		_positions = new Position[](length);
+		for (uint256 i = 0; i < length; i++) {
+			_positions[i] = positions[keys[i]];
+		}
+		return _positions;
 	}
 
 	// Modifiers
