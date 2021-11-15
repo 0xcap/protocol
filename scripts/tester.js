@@ -8,12 +8,19 @@ const { ethers } = require('hardhat');
 
 const ADDRESS_ZERO = '0x0000000000000000000000000000000000000000';
 
+const toBytes32 = function (string) {
+  return ethers.utils.formatBytes32String(string);
+}
+const fromBytes32 = function (string) {
+  return ethers.utils.parseBytes32String(string);
+}
+
 const parseUnits = function (number, units) {
-  return ethers.utils.parseUnits(number, units || 18);
+  return ethers.utils.parseUnits(number, units || 8);
 }
 
 const formatUnits = function (number, units) {
-  return ethers.utils.formatUnits(number, units || 18);
+  return ethers.utils.formatUnits(number, units || 8);
 }
 
 const formatPosition = (p) => {
@@ -21,16 +28,10 @@ const formatPosition = (p) => {
   if (!p || !p.margin || p.margin.toString() * 1 == 0) return;
 
   return {
-    closeOrderId: p.closeOrderId.toString(),
-    productId: p.productId.toString(),
     size: p.size.toString(),
     price: p.price.toString(),
     margin: p.margin.toString(),
-    fee: p.fee.toString(),
-    owner: p.owner,
-    currency: p.currency,
-    timestamp: p.timestamp.toString(),
-    isLong: p.isLong
+    timestamp: p.timestamp.toString()
   };
 
 }
@@ -67,31 +68,28 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0xC3549920b94a795D75E6C003944943D552C46F97';
+  const routerAddress = '0x37c6D38D67a15C07Ff636CFBCE99987fF9f1F24a';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
-
-  const wethAddress = await router.weth();
-  const weth = await (await ethers.getContractFactory("WETH")).attach(wethAddress);
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xAA5c5496e2586F81d8d2d0B970eB85aB088639c2';
+  const usdcAddress = '0x9B47985963fC82D8DEa6D824d1FbbFf3be5ca647';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0x0aD6371dd7E9923d9968D63Eb8B9858c700abD9d';
+  const capAddress = '0xa54C848fF17DE43816e63cE639540E4a0cb244ba';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
-  const poolWETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(wethAddress));
+  const poolETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(ADDRESS_ZERO));
   const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(usdcAddress));
 
-  const poolRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(wethAddress));
+  const poolRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(ADDRESS_ZERO));
   const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
 
   const capPool = await (await ethers.getContractFactory("PoolCAP")).attach(await router.capPool());
 
-  const capRewardsWETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
+  const capRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   
   console.log('Contracts set', router.address);
@@ -103,33 +101,31 @@ async function main() {
   let tx, receipt;
 
   // // get product
-  // console.log('BTC-USD');
-  // const product = await trading.getProduct(2);
+  // console.log('ETH-USD');
+  // const product = await trading.getProduct(toBytes32('ETH-USD'));
   // console.log('product', product);
   
   // // Update product
-  // await trading.updateProduct(2, [
+  // await trading.updateProduct(toBytes32('ETH-USD'), [
   //   product[0],
-  //   parseUnits("50"),
+  //   parseUnits("50", 10),
   //   product[2],
-  //   8000,
-  //   1500,
-  //   1600
+  //   product[3]
   // ]);
-  // console.log('Updated BTC/USD');
+  // console.log('Updated ETH/USD');
   
   // // submit order (ETH)
-  // tx = await trading.connect(user).submitNewPosition(
-  //   wethAddress, // currency
-  //   1, // productId
+  // tx = await trading.connect(user).submitOrder(
+  //   ADDRESS_ZERO, // currency
+  //   toBytes32('ETH-USD'), // productId
+  //   true,
   //   0, // margin is sent as value for WETH
   //   parseUnits("5"), // size
-  //   true, // isLong
-  //   {value: parseUnits("1")} // margin
+  //   {value: parseUnits("1", 18)} // margin
   // );
   // console.log('Submitted order long 1 ETH margin at 20x (WETH, ETH-USD)');
   // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 334911, 317811 / 244768
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 99K
 
   // // Router dark oracle address
   // console.log('ro', await router.darkOracle());
@@ -139,27 +135,36 @@ async function main() {
   // console.log('WETH ETH balance', formatUnits(await provider.getBalance(weth.address)));
   // console.log('Trading contract balance (WETH)', formatUnits(await weth.balanceOf(trading.address)));
 
-  const posId = await trading.nextPositionId();
-  console.log('Position', posId.toString(), formatPosition((await trading.getPositions([posId]))[0]));
+  // Get position
+  const pos = await trading.getPosition('0x70997970C51812dc3A010C7d01b50e0d17dc79C8', '0x0000000000000000000000000000000000000000', '0x4554482d55534400000000000000000000000000000000000000000000000000', true);
+  console.log('Position', formatPosition(pos));
   
-  // submit partial close order
-  tx = await trading.submitCloseOrder(
-    posId, // position id
-    parseUnits("1"), // size to close
-    {value: parseUnits("0.001")} // fee - to be calculated correctly. can be anything above the expected amount
-  );
-  console.log('Submitted close order for 1 ETH on position ', posId);
-  receipt = await provider.getTransactionReceipt(tx.hash);
-  console.log('Gas used:', (receipt.gasUsed).toNumber()); // 235604
+  // // submit partial close order
+  // tx = await trading.connect(user).submitCloseOrder(
+  //   '0x0000000000000000000000000000000000000000',
+  //   toBytes32('ETH-USD'),
+  //   true,
+  //   parseUnits("1"), // size to close
+  //   {value: parseUnits("0.001", 18)} // fee - to be calculated correctly. can be anything above the expected amount
+  // );
+  // console.log('Submitted close order for 1 ETH on position');
+  // receipt = await provider.getTransactionReceipt(tx.hash);
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 54256
 
   // const closeId = await trading.nextCloseOrderId();
   // console.log('Close Order', closeId.toString(), formatOrder((await trading.getCloseOrders([closeId]))[0]));
 
   // // submit rest of close order (full)
-  // tx = await trading.connect(user).submitCloseOrder(posId, parseUnits("0.936", 8), {value: parseUnits("0.1")});
-  // console.log('Submitted close order for 0.936 ETH on position ', posId);
+  // tx = await trading.connect(user).submitCloseOrder(
+  //   '0x0000000000000000000000000000000000000000',
+  //   toBytes32('ETH-USD'),
+  //   true,
+  //   parseUnits("4"), // size to close
+  //   {value: parseUnits("0.004", 18)} // fee - to be calculated correctly. can be anything above the expected amount
+  // );
+  // console.log('Submitted close order for 4 ETH on position');
   // receipt = await provider.getTransactionReceipt(tx.hash);
-  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 65222
+  // console.log('Gas used:', (receipt.gasUsed).toNumber()); // 54728
 
   // // cancel close order
   // tx = await trading.connect(user).cancelOrder(3);

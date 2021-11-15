@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
+import 'hardhat/console.sol';
+
 import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
@@ -68,7 +70,7 @@ contract Trading {
 
 	mapping(address => uint256) pendingFees; // currency => amount
 
-	uint256 public constant UNIT_DECIMALS = 10;
+	uint256 public constant UNIT_DECIMALS = 8;
 	uint256 public constant UNIT = 10**UNIT_DECIMALS;
 
 	uint256 public constant PRICE_DECIMALS = 8;
@@ -178,7 +180,7 @@ contract Trading {
 		if (pendingFee > 0) {
 			pendingFees[currency] = 0;
 			_transferOut(currency, treasury, pendingFee);
-			ITreasury(treasury).notifyFeeReceived(currency, pendingFee);
+			ITreasury(treasury).notifyFeeReceived(currency, pendingFee * 10**(18-UNIT_DECIMALS));
 		}
 	}
 
@@ -191,7 +193,7 @@ contract Trading {
 	) external payable {
 
 		if (currency == address(0)) { // User is sending ETH
-			margin = msg.value;
+			margin = msg.value / 10**(18 - UNIT_DECIMALS);
 		} else {
 			require(IRouter(router).isSupportedCurrency(currency), "!currency");
 		}
@@ -216,7 +218,7 @@ contract Trading {
 		require(leverage <= product.maxLeverage, "!max-leverage");
 		require(margin >= minMargin[currency], "!min-margin");
 
-		// Update and check pool utlization
+		// Update and check pool utlization 43K
 		_updateOpenInterest(currency, size, false);
 		address pool = IRouter(router).getPool(currency);
 		uint256 utilization = IPool(pool).getUtilization();
@@ -264,6 +266,7 @@ contract Trading {
 		Position storage position = positions[key];
 		require(position.margin > 0, "!position");
 
+		// TODO: size can be updated here, which means expected fee will be different and user won't know what to send as fee?
 		if (size > position.size) {
 			size = position.size;
 		}
@@ -272,7 +275,8 @@ contract Trading {
 		uint256 fee = size * product.fee / 10**6;
 
 		if (currency == address(0)) {
-			require(msg.value >= fee && msg.value <= fee * 10100 / 10**4, "!fee");
+			uint256 fee_units = fee * 10**(18-UNIT_DECIMALS);
+			require(msg.value >= fee_units && msg.value <= fee_units * 10100 / 10**4, "!fee");
 		} else {
 			_transferIn(currency, fee);
 		}
@@ -288,7 +292,7 @@ contract Trading {
 			msg.sender,
 			productId,
 			currency,
-			isLong,
+			!isLong,
 			0,
 			size,
 			true // isClose
@@ -357,7 +361,7 @@ contract Trading {
 						}
 					}
 				} else {
-					IPool(pool).creditUserProfit(user, uint256(pnl));
+					IPool(pool).creditUserProfit(user, uint256(pnl) * 10**(18-UNIT_DECIMALS));
 					_transferOut(currency, user, margin);
 				}
 
@@ -445,7 +449,18 @@ contract Trading {
 
 		price = _validatePrice(price);
 
-		int256 pnl = _getPnL(position, !isLong, price, margin, product.interest);
+		console.log('price', price, margin, isLong);
+		console.log('other', product.interest, position.size, position.price);
+		console.log('other2', size, position.margin, position.timestamp);
+
+		int256 pnl = _getPnL(isLong, price, position.price, size, product.interest, position.timestamp);
+
+		// TODO: review pnl calculation, doesn't seem to be working. console.log etc
+		if (pnl < 0) {
+			console.log('pnl n', uint256(-1*pnl));
+		} else {
+			console.log('pnl p', uint256(pnl));
+		}
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4)) {
@@ -483,10 +498,8 @@ contract Trading {
 		bytes32 key = getPositionKey(user, currency, productId, isLong);
 
 		Position memory position = positions[key];
-		
-		uint256 margin = position.margin;
 
-		if (margin == 0) {
+		if (position.margin == 0 || position.size == 0) {
 			return;
 		}
 
@@ -494,13 +507,13 @@ contract Trading {
 
 		price = _validatePrice(price);
 
-		int256 pnl = _getPnL(position, !isLong, price, margin, product.interest);
+		int256 pnl = _getPnL(isLong, price, position.price, position.size, product.interest, position.timestamp);
 
-		uint256 threshold = margin * product.liquidationThreshold / 10**4;
+		uint256 threshold = position.margin * product.liquidationThreshold / 10**4;
 
 		if (pnl <= -1 * int256(threshold)) {
 
-			uint256 fee = margin - threshold;
+			uint256 fee = position.margin - threshold;
 			address pool = IRouter(router).getPool(currency);
 
 			_transferOut(currency, pool, threshold);
@@ -514,10 +527,10 @@ contract Trading {
 				currency,
 				isLong,
 				price,
-				margin,
+				position.margin,
 				position.size,
 				fee,
-				-1 * int256(margin),
+				-1 * int256(uint256(position.margin)),
 				true
 			);
 
@@ -609,39 +622,37 @@ contract Trading {
 	}
 	
 	function _getPnL(
-		Position memory position,
 		bool isLong,
 		uint256 price,
-		uint256 margin,
-		uint256 interest
+		uint256 positionPrice,
+		uint256 size,
+		uint256 interest,
+		uint256 timestamp
 	) internal view returns(int256 _pnl) {
 
 		bool pnlIsNegative;
 		uint256 pnl;
 
-		uint256 leverage = UNIT * position.size / position.margin;
-		uint256 size = margin * leverage;
-
 		if (isLong) {
-			if (price >= position.price) {
-				pnl = size * (price - position.price) / (position.price * UNIT);
+			if (price >= positionPrice) {
+				pnl = size * (price - positionPrice) / positionPrice;
 			} else {
-				pnl = size * (position.price - price) / (position.price * UNIT);
+				pnl = size * (positionPrice - price) / positionPrice;
 				pnlIsNegative = true;
 			}
 		} else {
-			if (price > position.price) {
-				pnl = size * (price - position.price) / (position.price * UNIT);
+			if (price > positionPrice) {
+				pnl = size * (price - positionPrice) / positionPrice;
 				pnlIsNegative = true;
 			} else {
-				pnl = size * (position.price - price) / (position.price * UNIT);
+				pnl = size * (positionPrice - price) / positionPrice;
 			}
 		}
 
 		// Subtract interest from P/L
-		if (block.timestamp >= position.timestamp + 15 minutes) {
+		if (block.timestamp >= timestamp + 15 minutes) {
 
-			uint256 _interest = size * interest * (block.timestamp - position.timestamp) / (UNIT * 10**4 * 360 days);
+			uint256 _interest = size * interest * (block.timestamp - timestamp) / (UNIT * 10**4 * 360 days);
 
 			if (pnlIsNegative) {
 				pnl += _interest;
@@ -688,6 +699,15 @@ contract Trading {
 	) external view returns(Order memory order) {
 		bytes32 key = getPositionKey(user, currency, productId, isLong);
 		return orders[key];
+	}
+
+	function getOrders(bytes32[] calldata keys) external view returns(Order[] memory _orders) {
+		uint256 length = keys.length;
+		_orders = new Order[](length);
+		for (uint256 i = 0; i < length; i++) {
+			_orders[i] = orders[keys[i]];
+		}
+		return _orders;
 	}
 
 	// Modifiers

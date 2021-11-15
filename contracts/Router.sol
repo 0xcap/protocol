@@ -52,6 +52,7 @@ contract Router {
 	}
 
 	function getDecimals(address currency) external view returns(uint8) {
+		if (currency == address(0)) return 18;
 		if (decimals[currency] > 0) return decimals[currency];
 		if (IERC20(currency).decimals() > 0) return IERC20(currency).decimals();
 		return 18;

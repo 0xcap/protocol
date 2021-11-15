@@ -6,6 +6,8 @@
 const hre = require("hardhat");
 const { ethers } = require('hardhat');
 
+const ADDRESS_ZERO = '0x0000000000000000000000000000000000000000';
+
 const toBytes32 = function (string) {
   return ethers.utils.formatBytes32String(string);
 }
@@ -14,11 +16,11 @@ const fromBytes32 = function (string) {
 }
 
 const parseUnits = function (number, units) {
-  return ethers.utils.parseUnits(number, units || 18);
+  return ethers.utils.parseUnits(number, units || 8);
 }
 
 const formatUnits = function (number, units) {
-  return ethers.utils.formatUnits(number, units || 18);
+  return ethers.utils.formatUnits(number, units || 8);
 }
 
 function sleep(ms) {
@@ -75,13 +77,7 @@ async function main() {
   await treasury.deployed();
   console.log("Treasury deployed to:", treasury.address);
 
-  // WETH, CAP, USDC mock tokens (local only)
-  const WETH = await hre.ethers.getContractFactory("WETH");
-  const weth = await WETH.deploy();
-  await weth.deployed();
-
-  // const weth = {address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1'};
-  console.log("weth:", weth.address);
+  // CAP, USDC mock tokens (local only)
 
   const MockToken = await hre.ethers.getContractFactory("MockToken");
   const cap = await MockToken.deploy("Cap", "CAP", 18);
@@ -106,9 +102,9 @@ async function main() {
   // Pools (WETH, USDC)
   const Pool = await hre.ethers.getContractFactory("Pool");
   
-  const poolWETH = await Pool.deploy(weth.address);
-  await poolWETH.deployed();
-  console.log("poolWETH deployed to:", poolWETH.address);
+  const poolETH = await Pool.deploy(ADDRESS_ZERO);
+  await poolETH.deployed();
+  console.log("poolETH deployed to:", poolETH.address);
 
   const poolUSDC = await Pool.deploy(usdc.address);
   await poolUSDC.deployed();
@@ -119,29 +115,29 @@ async function main() {
   const Rewards = await hre.ethers.getContractFactory("Rewards");
 
   // Rewards for Pools
-  const poolRewardsWETH = await Rewards.deploy(poolWETH.address, weth.address);
-  await poolRewardsWETH.deployed();
-  console.log("poolRewardsWETH deployed to:", poolRewardsWETH.address);
+  const poolRewardsETH = await Rewards.deploy(poolETH.address, ADDRESS_ZERO);
+  await poolRewardsETH.deployed();
+  console.log("poolRewardsETH deployed to:", poolRewardsETH.address);
 
   const poolRewardsUSDC = await Rewards.deploy(poolUSDC.address, usdc.address);
   await poolRewardsUSDC.deployed();
   console.log("poolRewardsUSDC deployed to:", poolRewardsUSDC.address);
 
   // Rewards for Cap
-  const capRewardsWETH = await Rewards.deploy(poolCAP.address, weth.address);
-  await capRewardsWETH.deployed();
-  console.log("capRewardsWETH deployed to:", capRewardsWETH.address);
+  const capRewardsETH = await Rewards.deploy(poolCAP.address, ADDRESS_ZERO);
+  await capRewardsETH.deployed();
+  console.log("capRewardsETH deployed to:", capRewardsETH.address);
 
   const capRewardsUSDC = await Rewards.deploy(poolCAP.address, usdc.address);
   await capRewardsUSDC.deployed();
   console.log("capRewardsUSDC deployed to:", capRewardsUSDC.address);
 
   // Treasury fee share setup
-  await treasury.setPoolShare(weth.address, 5000);
+  await treasury.setPoolShare(ADDRESS_ZERO, 5000);
   await treasury.setPoolShare(usdc.address, 5000);
   console.log("set pool shares for treasury");
 
-  await treasury.setCapPoolShare(weth.address, 1000);
+  await treasury.setCapPoolShare(ADDRESS_ZERO, 1000);
   await treasury.setCapPoolShare(usdc.address, 1000);
   console.log("set Cap shares for treasury");
 
@@ -151,22 +147,21 @@ async function main() {
     trading.address,
     poolCAP.address,
     oracle.address,
-    darkOracleAddress,
-    weth.address
+    darkOracleAddress
   );
 
-  await router.setPool(weth.address, poolWETH.address);
+  await router.setPool(ADDRESS_ZERO, poolETH.address);
   await router.setPool(usdc.address, poolUSDC.address);
 
-  await router.setPoolRewards(weth.address, poolRewardsWETH.address);
+  await router.setPoolRewards(ADDRESS_ZERO, poolRewardsETH.address);
   await router.setPoolRewards(usdc.address, poolRewardsUSDC.address);
 
-  await router.setCapRewards(weth.address, capRewardsWETH.address);
+  await router.setCapRewards(ADDRESS_ZERO, capRewardsETH.address);
   await router.setCapRewards(usdc.address, capRewardsUSDC.address);
   
   console.log("Setup router contracts");
 
-  await router.setCurrencies([weth.address, usdc.address]);
+  await router.setCurrencies([ADDRESS_ZERO, usdc.address]);
   console.log("Setup router currencies");
 
   // Link contracts with Router, which also sets their dependent contract addresses
@@ -174,11 +169,11 @@ async function main() {
   await treasury.setRouter(router.address);
   await poolCAP.setRouter(router.address);
   await oracle.setRouter(router.address);
-  await poolWETH.setRouter(router.address);
+  await poolETH.setRouter(router.address);
   await poolUSDC.setRouter(router.address);
-  await poolRewardsWETH.setRouter(router.address);
+  await poolRewardsETH.setRouter(router.address);
   await poolRewardsUSDC.setRouter(router.address);
-  await capRewardsWETH.setRouter(router.address);
+  await capRewardsETH.setRouter(router.address);
   await capRewardsUSDC.setRouter(router.address);
 
   console.log("Linked router with contracts");
@@ -190,21 +185,15 @@ async function main() {
 
   const products = [
     {
-      symbol: 'ETH-USD',
-      id: 1,
-      feed: '0x0000000000000000000000000000000000000000',
+      id: 'ETH-USD',
       maxLeverage: 50,
-      oracleMaxDeviation: 2.5,
       fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
     },
     {
-      symbol: 'BTC-USD',
-      id: 2,
-      feed: '0x0000000000000000000000000000000000000000',
+      id: 'BTC-USD',
       maxLeverage: 50,
-      oracleMaxDeviation: 2.5,
       fee: 0.1,
       interest: 16,
       liquidationThreshold: 80
@@ -212,15 +201,13 @@ async function main() {
   ];
 
   for (const p of products) {
-    await trading.addProduct(p.id, [
-      p.feed,
+    await trading.addProduct(toBytes32(p.id), [
       parseUnits(""+p.maxLeverage),
-      parseInt(p.oracleMaxDeviation * 100),
       parseInt(p.liquidationThreshold * 100),
       parseInt(p.fee * 10000),
       parseInt(p.interest * 100),
     ]);
-    console.log('Added product ' + p.symbol);
+    console.log('Added product ' + p.id);
   }
 
   // // Mint some CAP, USDC

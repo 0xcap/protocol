@@ -89,7 +89,7 @@ contract Oracle {
 
 	}
 
-	function liquidatePosition(
+	function liquidatePositions(
 		address[] calldata users,
 		address[] calldata currencies,
 		bytes32[] calldata productIds,
