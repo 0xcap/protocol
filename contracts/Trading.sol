@@ -602,7 +602,7 @@ contract Trading {
 
 	function _updateOpenInterest(address currency, uint256 amount, bool isDecrease) internal {
 		address pool = IRouter(router).getPool(currency);
-		IPool(pool).updateOpenInterest(amount, isDecrease);
+		IPool(pool).updateOpenInterest(amount * 10**(18 - UNIT_DECIMALS), isDecrease);
 	}
 
 	function _transferIn(address currency, uint256 amount) internal {
