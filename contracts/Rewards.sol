@@ -111,7 +111,9 @@ contract Rewards {
 		uint256 supply = IPool(pool).totalSupply();
 		if (supply == 0) return currentClaimableReward;
 
-		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + pendingReward * UNIT / supply;
+		uint256 _pendingReward = pendingReward + ITrading(trading).getPendingFee(currency);
+
+		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + _pendingReward * UNIT / supply;
 		if (_rewardPerTokenStored == 0) return currentClaimableReward; // no rewards yet
 
 		uint256 accountStakedBalance = IPool(pool).getBalance(msg.sender);

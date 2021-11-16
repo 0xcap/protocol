@@ -186,6 +186,10 @@ contract Trading {
 		}
 	}
 
+	function getPendingFee(address currency) external view returns(uint256) {
+		return pendingFees[currency] * 10**(18-UNIT_DECIMALS);
+	}
+
 	function submitOrder(
 		address currency,
 		bytes32 productId,
