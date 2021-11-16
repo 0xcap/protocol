@@ -210,9 +210,9 @@ async function main() {
     console.log('Added product ' + p.id);
   }
 
-  // // Mint some CAP, USDC
-  // await usdc.mint(parseUnits("100000", 6));
-  // await cap.mint(parseUnits("1000"));
+  // Mint some CAP, USDC
+  await usdc.mint(parseUnits("100000", 6));
+  await cap.mint(parseUnits("1000", 18));
 
 }
 

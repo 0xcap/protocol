@@ -91,17 +91,17 @@ contract Oracle {
 
 	function liquidatePositions(
 		address[] calldata users,
-		address[] calldata currencies,
 		bytes32[] calldata productIds,
+		address[] calldata currencies,
 		bool[] calldata directions,
 		uint256[] calldata prices
 	) external onlyDarkOracle {
 		for (uint256 i = 0; i < users.length; i++) {
 			address user = users[i];
-			address currency = currencies[i];
 			bytes32 productId = productIds[i];
+			address currency = currencies[i];
 			bool isLong = directions[i];
-			ITrading(trading).liquidatePosition(currency, user, productId, isLong, prices[i]);
+			ITrading(trading).liquidatePosition(user, productId, currency, isLong, prices[i]);
 		}
 		_tallyOracleRequests(users.length);
 	}

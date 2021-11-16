@@ -7,7 +7,7 @@ interface ITrading {
     
     function settleOrder(address user, bytes32 productId, address currency, bool isLong, uint256 price) external;
 
-    function liquidatePosition(address user, address currency, bytes32 productId, bool isLong, uint256 price) external;
+    function liquidatePosition(address user, bytes32 productId, address currency, bool isLong, uint256 price) external;
 
     function getPendingFee(address currency) external view returns(uint256);
     

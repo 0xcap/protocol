@@ -68,17 +68,17 @@ async function main() {
   console.log('user', user.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x37c6D38D67a15C07Ff636CFBCE99987fF9f1F24a';
+  const routerAddress = '0x1BA1f90A3eB0e59421B54Dbf876119987587C0C3';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0x9B47985963fC82D8DEa6D824d1FbbFf3be5ca647';
+  const usdcAddress = '0xB3a1e45D60f9394bC4327f5Dc46dB56D8a3c3688';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0xa54C848fF17DE43816e63cE639540E4a0cb244ba';
+  const capAddress = '0x57a7b5cD15eA2c64A48104482837519B81a0619a';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(ADDRESS_ZERO));
@@ -94,9 +94,9 @@ async function main() {
   
   console.log('Contracts set', router.address);
 
-  // // Mint some CAP, USDC
+  // Mint some CAP, USDC
   // await usdc.mint(parseUnits("100000", 6));
-  // await cap.mint(parseUnits("1000"));
+  // await cap.mint(parseUnits("1000", 18));
 
   let tx, receipt;
 
@@ -135,9 +135,9 @@ async function main() {
   // console.log('WETH ETH balance', formatUnits(await provider.getBalance(weth.address)));
   // console.log('Trading contract balance (WETH)', formatUnits(await weth.balanceOf(trading.address)));
 
-  // Get position
-  const pos = await trading.getPosition('0x70997970C51812dc3A010C7d01b50e0d17dc79C8', '0x0000000000000000000000000000000000000000', '0x4554482d55534400000000000000000000000000000000000000000000000000', true);
-  console.log('Position', formatPosition(pos));
+  // // Get position
+  // const pos = await trading.getPosition('0x70997970C51812dc3A010C7d01b50e0d17dc79C8', '0x0000000000000000000000000000000000000000', '0x4554482d55534400000000000000000000000000000000000000000000000000', true);
+  // console.log('Position', formatPosition(pos));
   
   // // submit partial close order
   // tx = await trading.connect(user).submitCloseOrder(

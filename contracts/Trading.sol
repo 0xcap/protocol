@@ -97,7 +97,8 @@ contract Trading {
 		bool isLong,
 		uint256 margin,
 		uint256 size,
-		uint256 price
+		uint256 price,
+		uint256 fee
 	);
 
 	event ClosePosition(
@@ -255,8 +256,8 @@ contract Trading {
 	}
 
 	function submitCloseOrder(
-		address currency,
 		bytes32 productId,
+		address currency,
 		bool isLong,
 		uint256 size
 	) external payable {
@@ -423,7 +424,8 @@ contract Trading {
 				isLong,
 				position.margin,
 				position.size,
-				position.price
+				position.price,
+				fee
 			);
 
 		}
@@ -504,8 +506,8 @@ contract Trading {
 	// Liquidate positionIds (oracle)
 	function liquidatePosition(
 		address user,
-		address currency,
 		bytes32 productId,
+		address currency,
 		bool isLong,
 		uint256 price
 	) external onlyOracle {
@@ -557,8 +559,8 @@ contract Trading {
 
 	function releaseMargin(
 		address user,
-		address currency,
 		bytes32 productId,
+		address currency,
 		bool isLong, 
 		bool includeFee
 	) external onlyOwner {
