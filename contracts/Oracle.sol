@@ -16,7 +16,7 @@ contract Oracle {
 
 	// Variables
 	uint256 public requestsPerFunding = 100;
-	uint256 public costPerRequest = 3 * 10**15; // 0.003 ETH
+	uint256 public costPerRequest = 6 * 10**14; // 0.0006 ETH
 	uint256 public requestsSinceFunding;
 
 	event SettlementError(
@@ -24,7 +24,6 @@ contract Oracle {
 		address currency,
 		bytes32 productId,
 		bool isLong,
-		bool isClose,
 		string reason
 	);
 
@@ -78,7 +77,6 @@ contract Oracle {
 					currency,
 					productId,
 					isLong,
-					false,
 					reason
 				);
 			}

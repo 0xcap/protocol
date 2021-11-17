@@ -10,17 +10,6 @@ import "./interfaces/IPool.sol";
 
 contract Trading {
 
-	// Gas optimization:
-	/*
-	- get off WETH (use ETH directly)
-	- 8 decimals for amounts instead of 18
-	- review bytes in structs
-	- get off enumerable set in positions, use events/graph to fetch latest user positions on client
-	- positions can be stored with a position key combining user/currency/etc instead of next id. oracle can pull based on event emitted which contains position key
-	- this can allow for 1 position for each currency and product and direction
-	- next close order id not needed either if using mapping closing[positionKey] = CloseOrder
-	*/
-
 	// All amounts in 8 decimals unless otherwise indicated
 
 	using SafeERC20 for IERC20;
