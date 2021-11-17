@@ -111,8 +111,14 @@ contract Rewards {
 		uint256 supply = IPool(pool).totalSupply();
 		if (supply == 0) return currentClaimableReward;
 
-		// TODO: getPendingFee does not take into account fee share set in treasury. Set fee shares in router so they can be accessed from there
-		uint256 _pendingReward = pendingReward + ITrading(trading).getPendingFee(currency);
+		uint256 share;
+		if (pool == IRouter(router).capPool()) {
+			share = IRouter(router).getCapShare(currency);
+		} else {
+			share = IRouter(router).getPoolShare(currency);
+		}
+
+		uint256 _pendingReward = pendingReward + ITrading(trading).getPendingFee(currency) * share / 10**4;
 
 		uint256 _rewardPerTokenStored = cumulativeRewardPerTokenStored + _pendingReward * UNIT / supply;
 		if (_rewardPerTokenStored == 0) return currentClaimableReward; // no rewards yet

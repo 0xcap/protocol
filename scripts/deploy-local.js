@@ -132,15 +132,6 @@ async function main() {
   await capRewardsUSDC.deployed();
   console.log("capRewardsUSDC deployed to:", capRewardsUSDC.address);
 
-  // Treasury fee share setup
-  await treasury.setPoolShare(ADDRESS_ZERO, 5000);
-  await treasury.setPoolShare(usdc.address, 5000);
-  console.log("set pool shares for treasury");
-
-  await treasury.setCapPoolShare(ADDRESS_ZERO, 1000);
-  await treasury.setCapPoolShare(usdc.address, 1000);
-  console.log("set Cap shares for treasury");
-
   // Router setup
   await router.setContracts(
     treasury.address,
@@ -152,6 +143,15 @@ async function main() {
 
   await router.setPool(ADDRESS_ZERO, poolETH.address);
   await router.setPool(usdc.address, poolUSDC.address);
+
+  // Fee share setup
+  await router.setPoolShare(ADDRESS_ZERO, 5000);
+  await router.setPoolShare(usdc.address, 5000);
+  console.log("set pool shares");
+
+  await router.setCapShare(ADDRESS_ZERO, 1000);
+  await router.setCapShare(usdc.address, 1000);
+  console.log("set Cap shares");
 
   await router.setPoolRewards(ADDRESS_ZERO, poolRewardsETH.address);
   await router.setPoolRewards(usdc.address, poolRewardsUSDC.address);

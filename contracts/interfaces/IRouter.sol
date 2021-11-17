@@ -22,6 +22,10 @@ interface IRouter {
 
     function getPool(address currency) external view returns (address);
 
+    function getPoolShare(address currency) external view returns(uint256);
+
+    function getCapShare(address currency) external view returns(uint256);
+
     function getPoolRewards(address currency) external view returns (address);
 
     function getCapRewards(address currency) external view returns (address);

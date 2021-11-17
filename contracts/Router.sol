@@ -24,6 +24,10 @@ contract Router {
 	mapping(address => uint8) decimals;
 
 	mapping(address => address) pools; // currency => contract
+	
+	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
+	mapping(address => uint256) private capShare; // currency => bps
+
 	mapping(address => address) poolRewards; // currency => contract
 	mapping(address => address) capRewards; // currency => contract
 
@@ -41,6 +45,14 @@ contract Router {
 
 	function getPool(address currency) external view returns(address) {
 		return pools[currency];
+	}
+
+	function getPoolShare(address currency) external view returns(uint256) {
+		return poolShare[currency];
+	}
+
+	function getCapShare(address currency) external view returns(uint256) {
+		return capShare[currency];
 	}
 
 	function getPoolRewards(address currency) external view returns(address) {
@@ -84,6 +96,13 @@ contract Router {
 
 	function setPool(address currency, address _contract) external onlyOwner {
 		pools[currency] = _contract;
+	}
+
+	function setPoolShare(address currency, uint256 share) external onlyOwner {
+		poolShare[currency] = share;
+	}
+	function setCapShare(address currency, uint256 share) external onlyOwner {
+		capShare[currency] = share;
 	}
 
 	function setPoolRewards(address currency, address _contract) external onlyOwner {

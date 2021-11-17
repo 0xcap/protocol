@@ -20,9 +20,6 @@ contract Treasury {
 	address public trading;
 	address public oracle;
 
-	mapping(address => uint256) private poolShare; // currency (eth, usdc, etc.) => bps
-	mapping(address => uint256) private capPoolShare; // currency => bps
-
 	uint256 public constant UNIT = 10**18;
 
 	constructor() {
@@ -41,13 +38,6 @@ contract Treasury {
 		trading = IRouter(router).trading();
 	}
 
-	function setPoolShare(address currency, uint256 share) external onlyOwner {
-		poolShare[currency] = share;
-	}
-	function setCapPoolShare(address currency, uint256 share) external onlyOwner {
-		capPoolShare[currency] = share;
-	}
-
 	// Methods
 
 	function notifyFeeReceived(
@@ -60,12 +50,12 @@ contract Treasury {
 		address capRewards = IRouter(router).getCapRewards(currency);
 
 		// Send poolShare to pool-currency rewards contract
-		uint256 poolReward = poolShare[currency] * amount / 10**4;
+		uint256 poolReward = IRouter(router).getPoolShare(currency) * amount / 10**4;
 		_transferOut(currency, poolRewards, poolReward);
 		IRewards(poolRewards).notifyRewardReceived(poolReward);
 
 		// Send capPoolShare to cap-currency rewards contract
-		uint256 capReward = capPoolShare[currency] * amount / 10**4;
+		uint256 capReward = IRouter(router).getCapShare(currency) * amount / 10**4;
 		_transferOut(currency, capRewards, capReward);
 		IRewards(capRewards).notifyRewardReceived(capReward);
 
@@ -104,15 +94,6 @@ contract Treasury {
 		} else {
 			IERC20(currency).safeTransfer(to, amount);
 		}
-	}
-
-	// Getters
-
-	function getPoolShare(address currency) external view returns(uint256) {
-		return poolShare[currency];
-	}
-	function getCapShare(address currency) external view returns(uint256) {
-		return capPoolShare[currency];
 	}
 
 	// Modifiers
