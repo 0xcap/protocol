@@ -34,6 +34,8 @@ contract Pool {
 
     uint256 public openInterest;
 
+    uint256 lastBalance;
+
 	uint256 public constant UNIT = 10**18;
 
     // Events
@@ -96,8 +98,6 @@ contract Pool {
 
 	function deposit(uint256 amount) external payable {
 
-		uint256 currentBalance = _getCurrentBalance();
-
 		if (currency == address(0)) {
 			amount = msg.value;
 		} else {
@@ -105,9 +105,9 @@ contract Pool {
 		}
 
 		require(amount > 0, "!amount");
-		require(amount + currentBalance <= maxCap, "!max-cap");
+		require(amount + lastBalance <= maxCap, "!max-cap");
 
-        uint256 clpAmountToMint = currentBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / currentBalance;
+        uint256 clpAmountToMint = lastBalance == 0 || totalSupply == 0 ? amount : amount * totalSupply / lastBalance;
 
         lastDeposited[msg.sender] = block.timestamp;
 
@@ -115,6 +115,8 @@ contract Pool {
 
         totalSupply += clpAmountToMint;
         balances[msg.sender] += clpAmountToMint;
+
+        lastBalance = _getCurrentBalance();
 
         emit Deposit(
         	msg.sender,

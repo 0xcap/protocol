@@ -6,8 +6,6 @@ import 'hardhat/console.sol';
 import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-
 import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
 import "./interfaces/IPool.sol";
@@ -17,7 +15,7 @@ contract Trading {
 	// Gas optimization:
 	/*
 	- get off WETH (use ETH directly)
-	- 10 decimals for amounts instead of 18
+	- 8 decimals for amounts instead of 18
 	- review bytes in structs
 	- get off enumerable set in positions, use events/graph to fetch latest user positions on client
 	- positions can be stored with a position key combining user/currency/etc instead of next id. oracle can pull based on event emitted which contains position key
@@ -25,9 +23,10 @@ contract Trading {
 	- next close order id not needed either if using mapping closing[positionKey] = CloseOrder
 	*/
 
+	// All amounts in 8 decimals unless otherwise indicated
+
 	using SafeERC20 for IERC20;
     using Address for address payable;
-    using EnumerableSet for EnumerableSet.UintSet;
 
 	// Structs
 
@@ -64,8 +63,6 @@ contract Trading {
 	mapping(bytes32 => Position) private positions; // key = currency,user,product,direction
 	mapping(bytes32 => Order) private orders; // position key => Order
 
-	mapping(address => EnumerableSet.UintSet) private userPositionIds;
-
 	mapping(address => uint256) minMargin; // currency => amount
 
 	mapping(address => uint256) pendingFees; // currency => amount
@@ -74,8 +71,6 @@ contract Trading {
 	uint256 public constant UNIT = 10**UNIT_DECIMALS;
 
 	uint256 public constant PRICE_DECIMALS = 8;
-
-	// TODO: event indexed
 
 	// Events
 	event NewOrder(
@@ -169,15 +164,6 @@ contract Trading {
 
 	// Methods
 
-	function getPositionKey(address user, address currency, bytes32 productId, bool isLong) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(
-            user,
-            currency,
-            productId,
-            isLong
-        ));
-    }
-
 	function distributeFees(address currency) external {
 		uint256 pendingFee = pendingFees[currency];
 		if (pendingFee > 0) {
@@ -187,13 +173,9 @@ contract Trading {
 		}
 	}
 
-	function getPendingFee(address currency) external view returns(uint256) {
-		return pendingFees[currency] * 10**(18-UNIT_DECIMALS);
-	}
-
 	function submitOrder(
-		address currency,
 		bytes32 productId,
+		address currency,
 		bool isLong,
 		uint256 margin,
 		uint256 size
@@ -209,6 +191,11 @@ contract Trading {
 		require(margin > 0, "!margin");
 		require(size > 0, "!size");
 
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
+
+		Order memory order = orders[key];
+		require(order.size == 0, "!order"); // existing order
+
 		Product memory product = products[productId];
 		uint256 fee = size * product.fee / 10**6;
 
@@ -219,22 +206,17 @@ contract Trading {
 			_transferIn(currency, margin + fee);
 		}
 
-		// Checks 3K
+		require(margin >= minMargin[currency], "!min-margin");
+
 		uint256 leverage = UNIT * size / margin;
 		require(leverage >= UNIT, "!leverage");
 		require(leverage <= product.maxLeverage, "!max-leverage");
-		require(margin >= minMargin[currency], "!min-margin");
 
-		// Update and check pool utlization 43K
+		// Update and check pool utlization
 		_updateOpenInterest(currency, size, false);
 		address pool = IRouter(router).getPool(currency);
 		uint256 utilization = IPool(pool).getUtilization();
 		require(utilization < 10**4, "!utilization");
-
-		bytes32 key = getPositionKey(msg.sender, currency, productId, isLong);
-
-		Order memory order = orders[key];
-		require(order.size == 0, "!order"); // existing order
 
 		orders[key] = Order({
 			isClose: false,
@@ -264,7 +246,7 @@ contract Trading {
 
 		require(size > 0, "!size");
 
-		bytes32 key = getPositionKey(msg.sender, currency, productId, isLong);
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
 
 		Order memory order = orders[key];
 		require(order.size == 0, "!order"); // existing order
@@ -273,7 +255,6 @@ contract Trading {
 		Position storage position = positions[key];
 		require(position.margin > 0, "!position");
 
-		// TODO: size can be updated here, which means expected fee will be different and user won't know what to send as fee?
 		if (size > position.size) {
 			size = position.size;
 		}
@@ -282,8 +263,7 @@ contract Trading {
 		uint256 fee = size * product.fee / 10**6;
 
 		if (currency == address(0)) {
-			uint256 fee_units = fee * 10**(18-UNIT_DECIMALS);
-			require(msg.value >= fee_units && msg.value <= fee_units * 10100 / 10**4, "!fee");
+			require(msg.value >= fee * 10**(18-UNIT_DECIMALS), "!fee");
 		} else {
 			_transferIn(currency, fee);
 		}
@@ -301,27 +281,25 @@ contract Trading {
 			msg.sender,
 			productId,
 			currency,
-			!isLong,
-			0,
+			isLong,
+			margin,
 			size,
-			true // isClose
+			true
 		);
 
 	}
 
-	// User can cancel pending position e.g. in case of error or non-execution
 	function cancelOrder(
 		bytes32 productId,
 		address currency,
 		bool isLong
 	) external {
 
-		bytes32 key = getPositionKey(msg.sender, currency, productId, isLong);
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
 
-		// Sanity check order. Checks should fail silently
 		Order memory order = orders[key];
+		require(order.size > 0, "!exists");
 
-		// fee
 		Product memory product = products[productId];
 		uint256 fee = order.size * product.fee / 10**6;
 
@@ -335,7 +313,7 @@ contract Trading {
 
 	}
 
-	// Set price for newly submitted position (oracle)
+	// Set price for newly submitted order (oracle)
 	function settleOrder(
 		address user,
 		bytes32 productId,
@@ -344,10 +322,10 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 
 		Order storage order = orders[key];
-		require(order.size > 0, "!order");
+		require(order.size > 0, "!exists");
 
 		// fee
 		Product memory product = products[productId];
@@ -432,7 +410,6 @@ contract Trading {
 
 	}
 
-	// Closes position at the fetched price (oracle)
 	function _settleCloseOrder(
 		address user,
 		bytes32 productId,
@@ -441,26 +418,15 @@ contract Trading {
 		uint256 price
 	) internal returns(uint256, uint256, int256) {
 
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 
 		// Check order and params
 		Order memory order = orders[key];
 		uint256 size = order.size;
-		require(size > 0, "!size");
+		uint256 margin = order.margin;
 
 		Position storage position = positions[key];
 		require(position.margin > 0, "!position");
-
-		if (size > position.size) {
-			size = position.size;
-		}
-
-		uint256 leverage = UNIT * position.size / position.margin;
-		uint256 margin = UNIT * size / leverage;
-
-		if (margin > position.margin) {
-			margin = position.margin;
-		}
 
 		Product memory product = products[productId];
 
@@ -472,12 +438,11 @@ contract Trading {
 
 		int256 pnl = _getPnL(isLong, price, position.price, size, product.interest, position.timestamp);
 
-		// TODO: review pnl calculation, doesn't seem to be working. console.log etc
-		if (pnl < 0) {
-			console.log('pnl n', uint256(-1*pnl));
-		} else {
-			console.log('pnl p', uint256(pnl));
-		}
+		// if (pnl < 0) {
+		// 	console.log('pnl n', uint256(-1*pnl));
+		// } else {
+		// 	console.log('pnl p', uint256(pnl));
+		// }
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4)) {
@@ -485,7 +450,6 @@ contract Trading {
 			margin = position.margin;
 			size = position.size;
 			position.margin = 0;
-			position.size = 0;
 		} else {
 			position.margin -= uint64(margin);
 			position.size -= uint64(size);
@@ -512,7 +476,7 @@ contract Trading {
 		uint256 price
 	) external onlyOracle {
 
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 
 		Position memory position = positions[key];
 
@@ -565,7 +529,7 @@ contract Trading {
 		bool includeFee
 	) external onlyOwner {
 
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 
 		Position storage position = positions[key];
 		require(position.margin > 0, "!position");
@@ -605,6 +569,12 @@ contract Trading {
 	// To receive ETH
 	fallback() external payable {}
 	receive() external payable {}
+
+	// Internal methods
+
+	function _getPositionKey(address user, bytes32 productId, address currency, bool isLong) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(user, productId, currency, isLong));
+    }
 
 	function _updateOpenInterest(address currency, uint256 amount, bool isDecrease) internal {
 		address pool = IRouter(router).getPool(currency);
@@ -704,7 +674,7 @@ contract Trading {
 		bytes32 productId,
 		bool isLong
 	) external view returns(Position memory position) {
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 		return positions[key];
 	}
 
@@ -714,7 +684,7 @@ contract Trading {
 		bytes32 productId,
 		bool isLong
 	) external view returns(Order memory order) {
-		bytes32 key = getPositionKey(user, currency, productId, isLong);
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 		return orders[key];
 	}
 
@@ -734,6 +704,10 @@ contract Trading {
 			_positions[i] = positions[keys[i]];
 		}
 		return _positions;
+	}
+
+	function getPendingFee(address currency) external view returns(uint256) {
+		return pendingFees[currency] * 10**(18-UNIT_DECIMALS);
 	}
 
 	// Modifiers
