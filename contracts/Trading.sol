@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import 'hardhat/console.sol';
-
 import "./libraries/SafeERC20.sol";
 import "./libraries/Address.sol";
 
@@ -340,8 +338,6 @@ contract Trading {
 
 				address pool = IRouter(router).getPool(currency);
 
-				console.log('oo', margin, size);
-
 				if (pnl < 0) {
 					{
 						uint256 positivePnl = uint256(-1 * pnl);
@@ -380,18 +376,11 @@ contract Trading {
 
 			Position storage position = positions[key];
 
-			console.log('a', position.size, position.price);
-			console.log('b', order.size, price, order.margin);
-
 			uint256 averagePrice = (uint256(position.size) * uint256(position.price) + uint256(order.size) * uint256(price)) / (uint256(position.size) + uint256(order.size));
-
-			console.log('averagePrice', averagePrice);
 
 			if (position.timestamp == 0) {
 				position.timestamp = uint64(block.timestamp);
 			}
-
-			console.log('position.timestamp', position.timestamp);
 
 			position.size += uint64(order.size);
 			position.margin += uint64(order.margin);
@@ -437,17 +426,7 @@ contract Trading {
 
 		price = _validatePrice(price);
 
-		console.log('price', price, margin, isLong);
-		console.log('other', product.interest, position.size, position.price);
-		console.log('other2', size, position.margin, position.timestamp);
-
 		int256 pnl = _getPnL(isLong, price, position.price, size, product.interest, position.timestamp);
-
-		if (pnl < 0) {
-			console.log('pnl n', uint256(-1*pnl));
-		} else {
-			console.log('pnl p', uint256(pnl));
-		}
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4)) {
