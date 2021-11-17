@@ -263,7 +263,8 @@ contract Trading {
 		uint256 fee = size * product.fee / 10**6;
 
 		if (currency == address(0)) {
-			require(msg.value >= fee * 10**(18-UNIT_DECIMALS), "!fee");
+			uint256 fee_units = fee * 10**(18-UNIT_DECIMALS);
+			require(msg.value >= fee_units && msg.value <= fee_units * (10**6 + 1)/10**6, "!fee");
 		} else {
 			_transferIn(currency, fee);
 		}
@@ -339,6 +340,8 @@ contract Trading {
 
 				address pool = IRouter(router).getPool(currency);
 
+				console.log('oo', margin, size);
+
 				if (pnl < 0) {
 					{
 						uint256 positivePnl = uint256(-1 * pnl);
@@ -351,6 +354,8 @@ contract Trading {
 					IPool(pool).creditUserProfit(user, uint256(pnl) * 10**(18-UNIT_DECIMALS));
 					_transferOut(currency, user, margin);
 				}
+
+				_updateOpenInterest(currency, size, true);
 
 				emit ClosePosition(
 					key, 
@@ -438,11 +443,11 @@ contract Trading {
 
 		int256 pnl = _getPnL(isLong, price, position.price, size, product.interest, position.timestamp);
 
-		// if (pnl < 0) {
-		// 	console.log('pnl n', uint256(-1*pnl));
-		// } else {
-		// 	console.log('pnl p', uint256(pnl));
-		// }
+		if (pnl < 0) {
+			console.log('pnl n', uint256(-1*pnl));
+		} else {
+			console.log('pnl p', uint256(pnl));
+		}
 
 		// Check if it's a liquidation
 		if (pnl <= -1 * int256(uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4)) {
@@ -454,8 +459,6 @@ contract Trading {
 			position.margin -= uint64(margin);
 			position.size -= uint64(size);
 		}
-
-		_updateOpenInterest(currency, size, true);
 		
 		if (position.margin == 0) {
 			delete positions[key];
@@ -559,7 +562,7 @@ contract Trading {
 		}
 
 		_updateOpenInterest(currency, position.size, true);
-
+		
 		delete positions[key];
 
 		_transferOut(currency, user, margin);

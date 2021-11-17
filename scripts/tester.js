@@ -68,17 +68,17 @@ async function main() {
   console.log('user', user.address, user2.address, user3.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x8Bf18e85B2FB7B050343AB2560E497b3Df18a59c';
+  const routerAddress = '0x883CcB0F1838b12bf720Bef0Af788758A9E6C57F';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
   const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
   const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
   const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0xAa2Dde363aAd835C88D28069769002e182c2611b';
+  const usdcAddress = '0x43F48c3DC6df4674219923F2d4f8880d5E3CCC4c';
   const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0x2C0Cb6183720432832b4aAC01553eCfc476c1D27';
+  const capAddress = '0x292E27B2b439Bb485265aBA27c131247B13593c1';
   const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
   const poolETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(ADDRESS_ZERO));
@@ -94,9 +94,11 @@ async function main() {
   
   console.log('Contracts set', router.address);
 
-  // Mint some CAP, USDC
-  await usdc.connect(user2).mint(parseUnits("100000", 6));
-  await cap.connect(user2).mint(parseUnits("1000", 18));
+  // // Mint some CAP, USDC
+  // await usdc.connect(user2).mint(parseUnits("100000", 6));
+  // await cap.connect(user2).mint(parseUnits("1000", 18));
+
+  console.log('Trading contract balance (ETH)', formatUnits(await provider.getBalance(trading.address), 18));
 
   let tx, receipt;
 
@@ -131,9 +133,9 @@ async function main() {
   // console.log('ro', await router.darkOracle());
   // console.log('oo', await oracle.darkOracle());
 
-  // Check weth balance
+  // // Check weth balance
   // console.log('WETH ETH balance', formatUnits(await provider.getBalance(weth.address)));
-  // console.log('Trading contract balance (WETH)', formatUnits(await weth.balanceOf(trading.address)));
+  // console.log('Trading contract balance (ETH)', formatUnits(await weth.balanceOf(trading.address)));
 
   // // Get position
   // const pos = await trading.getPosition('0x70997970C51812dc3A010C7d01b50e0d17dc79C8', '0x0000000000000000000000000000000000000000', '0x4554482d55534400000000000000000000000000000000000000000000000000', true);
