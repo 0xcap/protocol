@@ -1,622 +1,616 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "./libraries/SafeERC20.sol";
+import "./libraries/Address.sol";
 
+import "./interfaces/IRouter.sol";
 import "./interfaces/ITreasury.sol";
+import "./interfaces/IPool.sol";
 
 contract Trading {
 
-	// All amounts are stored with 8 decimals
+	// All amounts in 8 decimals unless otherwise indicated
+
+	using SafeERC20 for IERC20;
+    using Address for address payable;
 
 	// Structs
 
 	struct Product {
-		// 32 bytes
-		address feed; // Chainlink. Can be address(0) for no bounding. 20 bytes
-		uint56 maxLeverage; // 7 bytes
-		uint16 fee; // In bps. 0.5% = 50. 2 bytes
-		uint16 interest; // For 360 days, in bps. 5.35% = 535. 2 bytes
-		bool isActive; // 1 byte
-		// 32 bytes
-		uint64 maxExposure; // Maximum tolerated long/short imbalance. 8 bytes
-		uint64 openInterestLong; // 8 bytes
-		uint64 openInterestShort; // 8 bytes
-		uint32 oracleMaxDeviation; // 4 bytes
-		uint32 minTradeDuration; // In seconds. 4 bytes
+		uint64 maxLeverage; // set to 0 to deactivate product
+		uint64 liquidationThreshold; // in bps. 8000 = 80%
+		uint64 fee; // In sbps (10^6). 0.5% = 5000. 0.025% = 250
+		uint64 interest; // For 360 days, in bps. 5.35% = 535
 	}
 
 	struct Position {
-		// 32 bytes
-		uint40 closeOrderId; // 5 bytes
-		uint24 productId; // 3 bytes
-		uint64 leverage; // 8 bytes
-		uint64 price; // 8 bytes
-		uint64 margin; // 8 bytes
-		// 32 bytes
-		address owner; // 20 bytes
-		uint88 timestamp; // 11 bytes
-		bool isLong; // 1 byte
+		uint64 size;
+		uint64 margin;
+		uint64 timestamp;
+		uint64 price;
 	}
 
 	struct Order {
-		uint64 positionId; // 8 bytes
-		uint32 productId; // 4 bytes
-		uint64 margin; // 8 bytes
-		uint88 timestamp; // 11 bytes
-		bool isLong; // 1 byte (position's isLong)
+		bool isClose;
+		uint64 size;
+		uint64 margin;
 	}
 
-	// Variables
-
-	address public owner; 
+	// Contracts
+	address public owner;
+	address public router;
 	address public treasury;
 	address public oracle;
 
-	// 32 bytes
-	uint64 public minMargin = 100000; // 0.001 ETH. 8 bytes
-	uint64 public maxSettlementTime = 10 minutes; // 8 bytes
-	uint32 public liquidationThreshold = 8000; // In bps. 8000 = 80%. 4 bytes
-	uint48 public nextPositionId; // Incremental. 6 bytes
-	uint48 public nextCloseOrderId; // Incremental. 6 bytes
+	uint256 public nextPositionId; // Incremental
+	uint256 public nextCloseOrderId; // Incremental
 
-	mapping(uint256 => Product) private products;
-	mapping(uint256 => Position) private positions;
-	mapping(uint256 => Order) private closeOrders;
+	mapping(bytes32 => Product) private products;
+	mapping(bytes32 => Position) private positions; // key = currency,user,product,direction
+	mapping(bytes32 => Order) private orders; // position key => Order
 
+	mapping(address => uint256) minMargin; // currency => amount
+
+	mapping(address => uint256) pendingFees; // currency => amount
+
+	uint256 public constant UNIT_DECIMALS = 8;
+	uint256 public constant UNIT = 10**UNIT_DECIMALS;
+
+	uint256 public constant PRICE_DECIMALS = 8;
 
 	// Events
-	event NewPosition(
-		uint256 indexed positionId, 
-		address indexed user, 
-		uint256 indexed productId, 
-		bool isLong, 
-		uint256 price, 
-		uint256 margin, 
-		uint256 leverage
-	);
-	event AddMargin(
-		uint256 indexed positionId, 
-		address indexed user, 
-		uint256 margin, 
-		uint256 newMargin, 
-		uint256 newLeverage
-	);
-	event ClosePosition(
-		uint256 positionId, 
-		address indexed user, 
-		uint256 indexed productId, 
-		bool indexed isFullClose, 
-		bool isLong,
-		uint256 price, 
-		uint256 entryPrice, 
-		uint256 margin, 
-		uint256 leverage, 
-		uint256 pnl, 
-		bool pnlIsNegative, 
-		bool wasLiquidated
-	);
-	event OpenOrder(
-		uint256 indexed positionId,
+	event NewOrder(
+		bytes32 indexed key,
 		address indexed user,
-		uint256 indexed productId
+		bytes32 indexed productId,
+		address currency,
+		bool isLong,
+		uint256 margin,
+		uint256 size,
+		bool isClose
 	);
 
-	// Constructor
+	event PositionUpdated(
+		bytes32 indexed key,
+		address indexed user,
+		bytes32 indexed productId,
+		address currency,
+		bool isLong,
+		uint256 margin,
+		uint256 size,
+		uint256 price,
+		uint256 fee
+	);
+
+	event ClosePosition(
+		bytes32 indexed key,
+		address indexed user,
+		bytes32 indexed productId,
+		address currency,
+		bool isLong,
+		uint256 price,
+		uint256 margin,
+		uint256 size,
+		uint256 fee,
+		int256 pnl,
+		bool wasLiquidated
+	);
 
 	constructor() {
 		owner = msg.sender;
 	}
 
+	// Governance methods
+
+	function setOwner(address newOwner) external onlyOwner {
+		owner = newOwner;
+	}
+
+	function setRouter(address _router) external onlyOwner {
+		router = _router;
+		treasury = IRouter(router).treasury();
+		oracle = IRouter(router).oracle();
+	}
+
+	function setMinMargin(
+		address currency,
+		uint256 _minMargin
+	) external onlyOwner {
+		minMargin[currency] = _minMargin;
+	}
+
+	function addProduct(bytes32 productId, Product memory _product) external onlyOwner {
+		
+		Product memory product = products[productId];
+		
+		require(product.liquidationThreshold == 0, "!product-exists");
+		require(_product.liquidationThreshold > 0, "!liqThreshold");
+
+		products[productId] = Product({
+			maxLeverage: _product.maxLeverage,
+			fee: _product.fee,
+			interest: _product.interest,
+			liquidationThreshold: _product.liquidationThreshold
+		});
+
+	}
+
+	function updateProduct(bytes32 productId, Product memory _product) external onlyOwner {
+
+		Product storage product = products[productId];
+
+		require(product.liquidationThreshold > 0, "!product-does-not-exist");
+
+		product.maxLeverage = _product.maxLeverage;
+		product.fee = _product.fee;
+		product.interest = _product.interest;
+		product.liquidationThreshold = _product.liquidationThreshold;
+
+	}
+
 	// Methods
 
-	// Submit new position (price pending)
-	function submitNewPosition(
-		uint256 productId,
+	function distributeFees(address currency) external {
+		uint256 pendingFee = pendingFees[currency];
+		if (pendingFee > 0) {
+			pendingFees[currency] = 0;
+			_transferOut(currency, treasury, pendingFee);
+			ITreasury(treasury).notifyFeeReceived(currency, pendingFee * 10**(18-UNIT_DECIMALS));
+		}
+	}
+
+	function submitOrder(
+		bytes32 productId,
+		address currency,
 		bool isLong,
-		uint256 leverage
+		uint256 margin,
+		uint256 size
 	) external payable {
 
-		uint256 margin = msg.value / 10**10; // truncate to 8 decimals
+		if (currency == address(0)) { // User is sending ETH
+			margin = msg.value / 10**(18 - UNIT_DECIMALS);
+		} else {
+			require(IRouter(router).isSupportedCurrency(currency), "!currency");
+		}
 
 		// Check params
-		require(margin >= minMargin, "!margin");
-		require(leverage >= 10**8, "!leverage");
+		require(margin > 0, "!margin");
+		require(size > 0, "!size");
 
-		// Check product
-		Product storage product = products[productId];
-		require(product.isActive, "!product-active");
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
+
+		Order memory order = orders[key];
+		require(order.size == 0, "!order"); // existing order
+
+		Product memory product = products[productId];
+		uint256 fee = size * product.fee / 10**6;
+
+		if (currency == address(0)) {
+			require(margin > fee, "!margin<fee");
+			margin -= fee;
+		} else {
+			_transferIn(currency, margin + fee);
+		}
+
+		require(margin >= minMargin[currency], "!min-margin");
+
+		uint256 leverage = UNIT * size / margin;
+		require(leverage >= UNIT, "!leverage");
 		require(leverage <= product.maxLeverage, "!max-leverage");
 
-		// Update exposure
-		uint256 amount = margin * leverage / 10**8;
-		if (isLong) {
-			product.openInterestLong += uint64(amount);
-			require(product.openInterestLong <= product.maxExposure + product.openInterestShort, "!exposure-long");
-		} else {
-			product.openInterestShort += uint64(amount);
-			require(product.openInterestShort <= product.maxExposure + product.openInterestLong, "!exposure-short");
-		}
+		// Update and check pool utlization
+		_updateOpenInterest(currency, size, false);
+		address pool = IRouter(router).getPool(currency);
+		uint256 utilization = IPool(pool).getUtilization();
+		require(utilization < 10**4, "!utilization");
 
-		// Add position
-		nextPositionId++;
-		positions[nextPositionId] = Position({
-			closeOrderId: 0,
-			owner: msg.sender,
-			productId: uint24(productId),
-			margin: uint64(margin),
-			leverage: uint64(leverage),
-			price: 0,
-			timestamp: uint88(block.timestamp),
-			isLong: isLong
+		orders[key] = Order({
+			isClose: false,
+			size: uint64(size),
+			margin: uint64(margin)
 		});
 
-		emit OpenOrder(
-			nextPositionId,
+		emit NewOrder(
+			key,
 			msg.sender,
-			productId
-		);
-
-	}
-
-	// Set price for newly submitted position
-	function settleNewPosition(
-		uint256 positionId,
-		uint256 price
-	) external onlyOracle {
-
-		// Check position
-		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-		require(position.price == 0, "!settled");
-
-		require(block.timestamp <= position.timestamp + maxSettlementTime, "!time");
-
-		Product memory product = products[position.productId];
-
-		// Set price
-		price = _validatePrice(product, price, position.isLong);
-
-		position.price = uint64(price);
-
-		emit NewPosition(
-			positionId,
-			position.owner,
-			position.productId,
-			position.isLong,
-			price,
-			position.margin,
-			position.leverage
-		);
-
-	}
-
-	// User or oracle can cancel pending position e.g. in case of error or non-execution
-	function cancelPosition(uint256 positionId) external {
-
-		// Sanity check position. Checks should fail silently
-		Position memory position = positions[positionId];
-		uint256 margin = position.margin;
-		address positionOwner = position.owner;
-
-		if (
-			position.price != 0 ||
-			margin == 0 ||
-			msg.sender != positionOwner && msg.sender != oracle
-		) return;
-
-		Product storage product = products[position.productId];
-
-		// Reverse exposure
-		uint256 amount = margin * uint256(position.leverage) / 10**8;
-		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint64(amount);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= uint64(amount);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
-		delete positions[positionId];
-
-		// Refund margin
-		payable(positionOwner).transfer(margin * 10**10);
-
-	}
-
-	// Submit order to close a position
-	function submitCloseOrder( 
-		uint256 positionId, 
-		uint256 margin
-	) external {
-
-		require(margin >= minMargin, "!margin");
-
-		// Check position
-		Position storage position = positions[positionId];
-		require(msg.sender == position.owner, "!owner");
-		require(position.margin > 0, "!position");
-		require(position.price > 0, "!opening");
-		require(position.closeOrderId == 0, "!closing");
-
-		// Check product
-		Product memory product = products[position.productId];
-		require(block.timestamp >= position.timestamp + product.minTradeDuration, "!duration");
-
-		nextCloseOrderId++;
-		closeOrders[nextCloseOrderId] = Order({
-			positionId: uint64(positionId),
-			productId: uint32(position.productId),
-			margin: uint64(margin),
-			timestamp: uint88(block.timestamp),
-			isLong: position.isLong
-		});
-
-		position.closeOrderId = uint40(nextCloseOrderId);
-
-	}
-
-	// Closes position at the fetched price
-	function settleCloseOrder(
-		uint256 orderId, 
-		uint256 price
-	) external onlyOracle {
-
-		// Check order and params
-		Order memory _closeOrder = closeOrders[orderId];
-		uint256 margin = _closeOrder.margin;
-		require(margin > 0, "!margin");
-
-		require(block.timestamp <= _closeOrder.timestamp + maxSettlementTime, "!time");
-
-		uint256 positionId = _closeOrder.positionId;
-
-		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-		require(position.closeOrderId == orderId, "!order");
-		require(position.price > 0, "!opening");
-
-		if (margin >= position.margin) {
-			margin = position.margin;
-		}
-
-		Product storage product = products[position.productId];
-		
-		price = _validatePrice(product, price, !position.isLong);
-
-		(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, margin, product.interest);
-
-		// Check if it's a liquidation
-		bool isLiquidation;
-		if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
-			pnl = uint256(position.margin);
-			margin = uint256(position.margin);
-			isLiquidation = true;
-		}
-
-		position.margin -= uint64(margin);
-
-		// Set exposure
-		if (position.isLong) {
-			if (product.openInterestLong >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestLong -= uint64(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (product.openInterestShort >= margin * uint256(position.leverage) / 10**8) {
-				product.openInterestShort -= uint64(margin * uint256(position.leverage) / 10**8);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
-		address positionOwner = position.owner;
-
-		emit ClosePosition(
-			positionId, 
-			positionOwner, 
-			position.productId, 
-			position.margin == 0,
-			position.isLong,
-			price, 
-			position.price,
-			margin, 
-			position.leverage, 
-			pnl, 
-			pnlIsNegative, 
-			isLiquidation
-		);
-
-		if (position.margin == 0) {
-			delete positions[positionId];
-		} else {
-			position.closeOrderId = 0;
-		}
-
-		delete closeOrders[orderId];
-
-		if (pnlIsNegative) {
-			ITreasury(treasury).creditVault{value: pnl * 10**10}();
-			if (pnl < margin) {
-				payable(positionOwner).transfer((margin - pnl) * 10**10);
-			}
-		} else {
-			ITreasury(treasury).debitVault(positionOwner, pnl * 10**10);
-			payable(positionOwner).transfer(margin * 10**10);
-		}
-
-	}
-
-	// User or oracle can cancel pending order e.g. in case of error or non-execution
-	function cancelOrder(uint256 orderId) external {
-
-		// Checks should fail silently
-		Order memory _closeOrder = closeOrders[orderId];
-		if (_closeOrder.positionId == 0) return;
-		
-		Position storage position = positions[_closeOrder.positionId];
-		if (msg.sender != oracle && msg.sender != position.owner) return;
-		if (position.closeOrderId != orderId) return;
-		
-		position.closeOrderId = 0;
-		delete closeOrders[orderId];
-
-	}
-
-	function releaseMargin(uint256 positionId) external onlyOwner {
-
-		Position storage position = positions[positionId];
-		require(position.margin > 0, "!position");
-
-		Product storage product = products[position.productId];
-
-		uint256 margin = position.margin;
-		address positionOwner = position.owner;
-
-		uint256 amount = margin * uint256(position.leverage) / 10**8;
-		// Set exposure
-		if (position.isLong) {
-			if (product.openInterestLong >= amount) {
-				product.openInterestLong -= uint64(amount);
-			} else {
-				product.openInterestLong = 0;
-			}
-		} else {
-			if (product.openInterestShort >= amount) {
-				product.openInterestShort -= uint64(amount);
-			} else {
-				product.openInterestShort = 0;
-			}
-		}
-
-		emit ClosePosition(
-			positionId, 
-			positionOwner, 
-			position.productId, 
-			true,
-			position.isLong,
-			position.price, 
-			position.price,
-			margin, 
-			position.leverage, 
-			0, 
-			false, 
+			productId,
+			currency,
+			isLong,
+			margin,
+			size,
 			false
 		);
 
-		if (position.closeOrderId > 0) {
-			delete closeOrders[position.closeOrderId];
-		}
-
-		delete positions[positionId];
-
-		payable(positionOwner).transfer(margin * 10**10);
-
 	}
 
-	// Add margin to Position with id = positionId
-	function addMargin(uint256 positionId) external payable {
+	function submitCloseOrder(
+		bytes32 productId,
+		address currency,
+		bool isLong,
+		uint256 size
+	) external payable {
 
-		uint256 margin = msg.value / 10**10; // truncate to 8 decimals
+		require(size > 0, "!size");
 
-		// Check params
-		require(margin >= minMargin, "!margin");
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
+
+		Order memory order = orders[key];
+		require(order.size == 0, "!order"); // existing order
 
 		// Check position
-		Position storage position = positions[positionId];
-		require(msg.sender == position.owner, "!owner");
-		require(position.price > 0, "!opening");
-		require(position.closeOrderId == 0, "!closing");
+		Position storage position = positions[key];
+		require(position.margin > 0, "!position");
 
-		// New position params
-		uint256 newMargin = position.margin + margin;
-		uint256 newLeverage = position.leverage * position.margin / newMargin;
-		require(newLeverage >= 10**8, "!low-leverage");
+		if (size > position.size) {
+			size = position.size;
+		}
 
-		position.margin = uint64(newMargin);
-		position.leverage = uint64(newLeverage);
+		Product memory product = products[productId];
+		uint256 fee = size * product.fee / 10**6;
 
-		emit AddMargin(
-			positionId, 
-			position.owner, 
-			margin, 
-			newMargin, 
-			newLeverage
+		if (currency == address(0)) {
+			uint256 fee_units = fee * 10**(18-UNIT_DECIMALS);
+			require(msg.value >= fee_units && msg.value <= fee_units * (10**6 + 1)/10**6, "!fee");
+		} else {
+			_transferIn(currency, fee);
+		}
+
+		uint256 margin = size * uint256(position.margin) / uint256(position.size);
+
+		orders[key] = Order({
+			isClose: true,
+			size: uint64(size),
+			margin: uint64(margin)
+		});
+
+		emit NewOrder(
+			key,
+			msg.sender,
+			productId,
+			currency,
+			isLong,
+			margin,
+			size,
+			true
 		);
 
 	}
 
-	// Liquidate positionIds
-	function liquidatePositions(
-		uint256[] calldata positionIds,
-		uint256[] calldata prices
+	function cancelOrder(
+		bytes32 productId,
+		address currency,
+		bool isLong
+	) external {
+
+		bytes32 key = _getPositionKey(msg.sender, productId, currency, isLong);
+
+		Order memory order = orders[key];
+		require(order.size > 0, "!exists");
+
+		Product memory product = products[productId];
+		uint256 fee = order.size * product.fee / 10**6;
+
+		_updateOpenInterest(currency, order.size, true);
+
+		delete orders[key];
+
+		// Refund margin + fee
+		uint256 marginPlusFee = order.margin + fee;
+		_transferOut(currency, msg.sender, marginPlusFee);
+
+	}
+
+	// Set price for newly submitted order (oracle)
+	function settleOrder(
+		address user,
+		bytes32 productId,
+		address currency,
+		bool isLong,
+		uint256 price
 	) external onlyOracle {
 
-		uint256 totalVaultReward;
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
 
-		for (uint256 i = 0; i < positionIds.length; i++) {
+		Order storage order = orders[key];
+		require(order.size > 0, "!exists");
 
-			uint256 positionId = positionIds[i];
-			Position memory position = positions[positionId];
+		// fee
+		Product memory product = products[productId];
+		uint256 fee = order.size * product.fee / 10**6;
+		pendingFees[currency] += fee;
+
+		if (order.isClose) {
 			
-			if (position.productId == 0 || position.price == 0) {
-				continue;
-			}
+			{
+				(uint256 margin, uint256 size, int256 pnl) = _settleCloseOrder(user, productId, currency, isLong, price);
 
-			Product storage product = products[position.productId];
+				address pool = IRouter(router).getPool(currency);
 
-			// Attempt to get chainlink price
-			uint256 price = _getChainlinkPrice(product.feed);
-
-			if (price == 0) {
-				price = prices[i];
-				if (price == 0) {
-					continue;
-				}
-			}
-
-			(uint256 pnl, bool pnlIsNegative) = _getPnL(position, price, position.margin, product.interest);
-
-			if (pnlIsNegative && pnl >= uint256(position.margin) * uint256(liquidationThreshold) / 10**4) {
-
-				totalVaultReward += uint256(position.margin);
-
-				uint256 amount = uint256(position.margin) * uint256(position.leverage) / 10**8;
-				if (position.isLong) {
-					if (product.openInterestLong >= amount) {
-						product.openInterestLong -= uint64(amount);
-					} else {
-						product.openInterestLong = 0;
+				if (pnl < 0) {
+					{
+						uint256 positivePnl = uint256(-1 * pnl);
+						_transferOut(currency, pool, positivePnl);
+						if (positivePnl < margin) {
+							_transferOut(currency, user, margin - positivePnl);
+						}
 					}
 				} else {
-					if (product.openInterestShort >= amount) {
-						product.openInterestShort -= uint64(amount);
-					} else {
-						product.openInterestShort = 0;
-					}
+					IPool(pool).creditUserProfit(user, uint256(pnl) * 10**(18-UNIT_DECIMALS));
+					_transferOut(currency, user, margin);
 				}
 
-				emit ClosePosition(
-					positionId, 
-					position.owner, 
-					position.productId, 
-					true,
-					position.isLong,
-					price, 
-					position.price,
-					position.margin, 
-					position.leverage, 
-					position.margin,
-					true,
-					true
-				);
+				_updateOpenInterest(currency, size, true);
 
-				delete positions[positionId];
+				emit ClosePosition(
+					key, 
+					user,
+					productId,
+					currency,
+					isLong,
+					price,
+					margin,
+					size,
+					fee,
+					pnl,
+					false
+				);
 
 			}
 
-		}
+		} else {
 
-		if (totalVaultReward > 0) {
-			ITreasury(treasury).creditVault{value: totalVaultReward * 10**10}();
+			// Validate price, returns 8 decimals
+			price = _validatePrice(price);
+
+			Position storage position = positions[key];
+
+			uint256 averagePrice = (uint256(position.size) * uint256(position.price) + uint256(order.size) * uint256(price)) / (uint256(position.size) + uint256(order.size));
+
+			if (position.timestamp == 0) {
+				position.timestamp = uint64(block.timestamp);
+			}
+
+			position.size += uint64(order.size);
+			position.margin += uint64(order.margin);
+			position.price = uint64(averagePrice);
+
+			delete orders[key];
+
+			emit PositionUpdated(
+				key,
+				user,
+				productId,
+				currency,
+				isLong,
+				position.margin,
+				position.size,
+				position.price,
+				fee
+			);
+
 		}
 
 	}
+
+	function _settleCloseOrder(
+		address user,
+		bytes32 productId,
+		address currency,
+		bool isLong,
+		uint256 price
+	) internal returns(uint256, uint256, int256) {
+
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
+
+		// Check order and params
+		Order memory order = orders[key];
+		uint256 size = order.size;
+		uint256 margin = order.margin;
+
+		Position storage position = positions[key];
+		require(position.margin > 0, "!position");
+
+		Product memory product = products[productId];
+
+		price = _validatePrice(price);
+
+		int256 pnl = _getPnL(isLong, price, position.price, size, product.interest, position.timestamp);
+
+		// Check if it's a liquidation
+		if (pnl <= -1 * int256(uint256(position.margin) * uint256(product.liquidationThreshold) / 10**4)) {
+			pnl = -1 * int256(uint256(position.margin));
+			margin = position.margin;
+			size = position.size;
+			position.margin = 0;
+		} else {
+			position.margin -= uint64(margin);
+			position.size -= uint64(size);
+		}
+		
+		if (position.margin == 0) {
+			delete positions[key];
+		}
+
+		delete orders[key];
+
+		return (margin, size, pnl);
+
+	}
+
+	// Liquidate positionIds (oracle)
+	function liquidatePosition(
+		address user,
+		bytes32 productId,
+		address currency,
+		bool isLong,
+		uint256 price
+	) external onlyOracle {
+
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
+
+		Position memory position = positions[key];
+
+		if (position.margin == 0 || position.size == 0) {
+			return;
+		}
+
+		Product storage product = products[productId];
+
+		price = _validatePrice(price);
+
+		int256 pnl = _getPnL(isLong, price, position.price, position.size, product.interest, position.timestamp);
+
+		uint256 threshold = position.margin * product.liquidationThreshold / 10**4;
+
+		if (pnl <= -1 * int256(threshold)) {
+
+			uint256 fee = position.margin - threshold;
+			address pool = IRouter(router).getPool(currency);
+
+			_transferOut(currency, pool, threshold);
+			_updateOpenInterest(currency, position.size, true);
+			pendingFees[currency] += fee;
+
+			emit ClosePosition(
+				key, 
+				user,
+				productId,
+				currency,
+				isLong,
+				price,
+				position.margin,
+				position.size,
+				fee,
+				-1 * int256(uint256(position.margin)),
+				true
+			);
+
+			delete positions[key];
+
+		}
+
+	}
+
+	function releaseMargin(
+		address user,
+		bytes32 productId,
+		address currency,
+		bool isLong, 
+		bool includeFee
+	) external onlyOwner {
+
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
+
+		Position storage position = positions[key];
+		require(position.margin > 0, "!position");
+
+		uint256 margin = position.margin;
+
+		emit ClosePosition(
+			key, 
+			user,
+			productId,
+			currency,
+			isLong,
+			position.price,
+			margin,
+			position.size,
+			0,
+			0,
+			false
+		);
+
+		delete orders[key];
+
+		if (includeFee) {
+			Product memory product = products[productId];
+			uint256 fee = position.size * product.fee / 10**6;
+			margin += fee;
+		}
+
+		_updateOpenInterest(currency, position.size, true);
+		
+		delete positions[key];
+
+		_transferOut(currency, user, margin);
+
+	}
+
+	// To receive ETH
+	fallback() external payable {}
+	receive() external payable {}
 
 	// Internal methods
 
-	function _validatePrice(
-		Product memory product,
-		uint256 price,
-		bool isLong
-	) internal view returns(uint256) {
+	function _getPositionKey(address user, bytes32 productId, address currency, bool isLong) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(user, productId, currency, isLong));
+    }
 
-		uint256 chainlinkPrice = _getChainlinkPrice(product.feed);
-
-		if (chainlinkPrice == 0) {
-			require(price > 0, "!price");
-			return price;
-		}
-
-		// Bound check oracle price against chainlink price
-		if (
-			price == 0 ||
-			price > chainlinkPrice + chainlinkPrice * product.oracleMaxDeviation / 10**4 ||
-			price < chainlinkPrice - chainlinkPrice * product.oracleMaxDeviation / 10**4
-		) {
-			if (isLong) {
-				return chainlinkPrice + chainlinkPrice * product.fee / 10**4;
-			} else {
-				return chainlinkPrice - chainlinkPrice * product.fee / 10**4;
-			}
-		}
-
-		return price;
-
+	function _updateOpenInterest(address currency, uint256 amount, bool isDecrease) internal {
+		address pool = IRouter(router).getPool(currency);
+		IPool(pool).updateOpenInterest(amount * 10**(18 - UNIT_DECIMALS), isDecrease);
 	}
 
-	function _getChainlinkPrice(address feed) internal view returns (uint256) {
+	function _transferIn(address currency, uint256 amount) internal {
+		if (amount == 0 || currency == address(0)) return;
+		// adjust decimals
+		uint256 decimals = IRouter(router).getDecimals(currency);
+		amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
+		IERC20(currency).safeTransferFrom(msg.sender, address(this), amount);
+	}
 
-		if (feed == address(0)) return 0;
-
-		(
-			, 
-            int price,
-            ,
-            uint timeStamp,
-            
-		) = AggregatorV3Interface(feed).latestRoundData();
-
-		if (price <= 0 || timeStamp == 0) return 0;
-
-		uint8 decimals = AggregatorV3Interface(feed).decimals();
-
-		uint256 feedPrice;
-		if (decimals != 8) {
-			feedPrice = uint256(price) * 10**8 / 10**decimals;
+	function _transferOut(address currency, address to, uint256 amount) internal {
+		if (amount == 0 || to == address(0)) return;
+		// adjust decimals
+		uint256 decimals = IRouter(router).getDecimals(currency);
+		amount = amount * (10**decimals) / (10**UNIT_DECIMALS);
+		if (currency == address(0)) {
+			payable(to).sendValue(amount);
 		} else {
-			feedPrice = uint256(price);
+			IERC20(currency).safeTransfer(to, amount);
 		}
+	}
 
-		return feedPrice;
-
+	function _validatePrice(
+		uint256 price // 8 decimals
+	) internal pure returns(uint256) {
+		require(price > 0, "!price");
+		return price * 10**(UNIT_DECIMALS - PRICE_DECIMALS);
 	}
 	
 	function _getPnL(
-		Position memory position,
+		bool isLong,
 		uint256 price,
-		uint256 margin,
-		uint256 interest
-	) internal view returns(uint256 pnl, bool pnlIsNegative) {
+		uint256 positionPrice,
+		uint256 size,
+		uint256 interest,
+		uint256 timestamp
+	) internal view returns(int256 _pnl) {
 
-		if (position.isLong) {
-			if (price >= uint256(position.price)) {
-				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+		bool pnlIsNegative;
+		uint256 pnl;
+
+		if (isLong) {
+			if (price >= positionPrice) {
+				pnl = size * (price - positionPrice) / positionPrice;
 			} else {
-				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				pnl = size * (positionPrice - price) / positionPrice;
 				pnlIsNegative = true;
 			}
 		} else {
-			if (price > uint256(position.price)) {
-				pnl = margin * uint256(position.leverage) * (price - uint256(position.price)) / (uint256(position.price) * 10**8);
+			if (price > positionPrice) {
+				pnl = size * (price - positionPrice) / positionPrice;
 				pnlIsNegative = true;
 			} else {
-				pnl = margin * uint256(position.leverage) * (uint256(position.price) - price) / (uint256(position.price) * 10**8);
+				pnl = size * (positionPrice - price) / positionPrice;
 			}
 		}
 
 		// Subtract interest from P/L
-		if (block.timestamp >= position.timestamp + 900) {
+		if (block.timestamp >= timestamp + 15 minutes) {
 
-			uint256 _interest = margin * uint256(position.leverage) * interest * (block.timestamp - uint256(position.timestamp)) / (10**12 * 360 days);
+			uint256 _interest = size * interest * (block.timestamp - timestamp) / (UNIT * 10**4 * 360 days);
 
 			if (pnlIsNegative) {
 				pnl += _interest;
@@ -629,149 +623,65 @@ contract Trading {
 
 		}
 
-		return (pnl, pnlIsNegative);
+		if (pnlIsNegative) {
+			_pnl = -1 * int256(pnl);
+		} else {
+			_pnl = int256(pnl);
+		}
+
+		return _pnl;
 
 	}
 
 	// Getters
 
-	function getChainlinkPrice(uint256 productId) external view returns(uint256) {
-		Product memory product = products[productId];
-		return _getChainlinkPrice(product.feed);
-	}
-
-	// gets latest positions and close orders that need to be settled
-	function getOrdersToSettle(uint256 limit) external view returns(
-		uint256[] memory _positionIds,
-		Position[] memory _positions,
-		uint256[] memory _orderIds,
-		Order[] memory _orders
-	) {
-
-		require(limit > 0 && limit <= 300, "!limit");
-
-		_positionIds = new uint256[](limit);
-		_positions = new Position[](limit);
-		_orderIds = new uint256[](limit);
-		_orders = new Order[](limit);
-
-		uint256 until1 = nextPositionId >= limit ? nextPositionId - limit : 0;
-		uint256 j = 0;
-		for (uint256 i = nextPositionId; i > until1; i--) {
-			Position memory position = positions[i];
-			if (position.price == 0 && position.margin > 0) {
-				_positionIds[j] = i;
-				_positions[j] = position;
-			}
-			j++;
-		}
-
-		uint256 until2 = nextCloseOrderId >= limit ? nextCloseOrderId - limit : 0;
-		uint256 k = 0;
-		for (uint256 i = nextCloseOrderId; i > until2; i--) {
-			_orderIds[k] = i;
-			_orders[k] = closeOrders[i];
-			k++;
-		}
-
-		return (
-			_positionIds,
-			_positions,
-			_orderIds,
-			_orders
-		);
-
-	}
-
-	function getProduct(uint256 productId) external view returns(Product memory) {
+	function getProduct(bytes32 productId) external view returns(Product memory) {
 		return products[productId];
 	}
 
-	function getPositions(uint256[] calldata positionIds) external view returns(Position[] memory _positions) {
-		uint256 length = positionIds.length;
-		_positions = new Position[](length);
-		for (uint256 i=0; i < length; i++) {
-			_positions[i] = positions[positionIds[i]];
-		}
-		return _positions;
+	function getPosition(
+		address user,
+		address currency,
+		bytes32 productId,
+		bool isLong
+	) external view returns(Position memory position) {
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
+		return positions[key];
 	}
 
-	function getOrders(uint256[] calldata orderIds) external view returns(Order[] memory _orders) {
-		uint256 length = orderIds.length;
+	function getOrder(
+		address user,
+		address currency,
+		bytes32 productId,
+		bool isLong
+	) external view returns(Order memory order) {
+		bytes32 key = _getPositionKey(user, productId, currency, isLong);
+		return orders[key];
+	}
+
+	function getOrders(bytes32[] calldata keys) external view returns(Order[] memory _orders) {
+		uint256 length = keys.length;
 		_orders = new Order[](length);
-		for (uint256 i=0; i < length; i++) {
-			_orders[i] = closeOrders[orderIds[i]];
+		for (uint256 i = 0; i < length; i++) {
+			_orders[i] = orders[keys[i]];
 		}
 		return _orders;
 	}
 
-	// Governance methods
-
-	function updateParams(
-		uint256 _minMargin,
-		uint256 _maxSettlementTime,
-		uint256 _liquidationThreshold
-	) external onlyOwner {
-		minMargin = uint64(_minMargin);
-		maxSettlementTime = uint64(_maxSettlementTime);
-		liquidationThreshold = uint32(_liquidationThreshold);
+	function getPositions(bytes32[] calldata keys) external view returns(Position[] memory _positions) {
+		uint256 length = keys.length;
+		_positions = new Position[](length);
+		for (uint256 i = 0; i < length; i++) {
+			_positions[i] = positions[keys[i]];
+		}
+		return _positions;
 	}
 
-	function addProduct(uint256 productId, Product memory _product) external onlyOwner {
-
-		Product memory product = products[productId];
-		require(product.maxLeverage == 0, "!product-exists");
-
-		require(_product.maxLeverage >= 10**8, "!max-leverage");
-		require(_product.maxExposure > 0, "!max-exposure");
-		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
-
-		products[productId] = Product({
-			feed: _product.feed,
-			maxLeverage: _product.maxLeverage,
-			fee: _product.fee,
-			interest: _product.interest,
-			isActive: true,
-			maxExposure: _product.maxExposure,
-			openInterestLong: 0,
-			openInterestShort: 0,
-			oracleMaxDeviation: _product.oracleMaxDeviation,
-			minTradeDuration: _product.minTradeDuration
-		});
-
+	function getPendingFee(address currency) external view returns(uint256) {
+		return pendingFees[currency] * 10**(18-UNIT_DECIMALS);
 	}
 
-	function updateProduct(uint256 productId, Product memory _product) external onlyOwner {
-
-		Product storage product = products[productId];
-		require(product.maxLeverage > 0, "!product-does-not-exist");
-
-		require(_product.maxLeverage >= 10**8, "!max-leverage");
-		require(_product.maxExposure > 0, "!max-exposure");
-		require(_product.oracleMaxDeviation > 0, "!oracleMaxDeviation");
-
-		product.feed = _product.feed;
-		product.maxLeverage = _product.maxLeverage;
-		product.fee = _product.fee;
-		product.interest = _product.interest;
-		product.isActive = _product.isActive;
-		product.maxExposure = _product.maxExposure;
-		product.oracleMaxDeviation = _product.oracleMaxDeviation;
-		product.minTradeDuration = _product.minTradeDuration;
-	
-	}
-
-	function setTreasury(address _treasury) external onlyOwner {
-		treasury = _treasury;
-	}
-
-	function setOracle(address _oracle) external onlyOwner {
-		oracle = _oracle;
-	}
-
-	function setOwner(address newOwner) external onlyOwner {
-		owner = newOwner;
-	}
+	// Modifiers
 
 	modifier onlyOracle() {
 		require(msg.sender == oracle, "!oracle");
