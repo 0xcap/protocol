@@ -9,7 +9,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.FORKING_URL
+        url: process.env.FORKING_URL_AVALANCHE
       },
       // mining: {
       //   auto: true,
@@ -30,6 +30,10 @@ module.exports = {
     arbitrum: {
       url: 'https://arb1.arbitrum.io/rpc',
       accounts: [process.env.ARBITRUM_PKEY]
+    },
+    avalanche: {
+      url: 'https://api.avax.network/ext/bc/C/rpc',
+      accounts: [process.env.AVALANCHE_PKEY]
     }
   },
   solidity: {
