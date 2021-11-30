@@ -58,47 +58,50 @@ async function main() {
   // If this script is run directly using `node` you may want to call compile
   // manually to make sure everything is compiled
   // await hre.run('compile');
-  
+    
+  // console.log(toBytes32('BTC-USD'));
+  // return;
+
   const darkOracleAddress = '0x14dc79964da2c08b23698b3d3cc7ca32193d9955';
 
   const provider = hre.ethers.provider;
   const [owner, user, user2, user3] = await ethers.getSigners();
 
   console.log('owner', owner.address);
-  console.log('user', user.address, user2.address, user3.address);
+  // console.log('user', user.address, user2.address, user3.address);
 
   // Other contract addresses can be obtained through router
-  const routerAddress = '0x883CcB0F1838b12bf720Bef0Af788758A9E6C57F';
+  const routerAddress = '0x5ABFF8F8D5b13253dCAB1e427Fdb3305cA620119';
   const router = await (await ethers.getContractFactory("Router")).attach(routerAddress);
 
-  const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
-  const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
-  const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
+  // const trading = await (await ethers.getContractFactory("Trading")).attach(await router.trading());
+  // const oracle = await (await ethers.getContractFactory("Oracle")).attach(await router.oracle());
+  // const treasury = await (await ethers.getContractFactory("Treasury")).attach(await router.treasury());
   
-  const usdcAddress = '0x43F48c3DC6df4674219923F2d4f8880d5E3CCC4c';
-  const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
+  // const usdcAddress = '0x43F48c3DC6df4674219923F2d4f8880d5E3CCC4c';
+  // const usdc = await (await ethers.getContractFactory("MockToken")).attach(usdcAddress);
 
-  const capAddress = '0x292E27B2b439Bb485265aBA27c131247B13593c1';
-  const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
+  // const capAddress = '0x292E27B2b439Bb485265aBA27c131247B13593c1';
+  // const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
-  const poolETH = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(ADDRESS_ZERO));
-  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach(await router.getPool(usdcAddress));
+  // const poolETH = await (await ethers.getContractFactory("Pool")).attach('0xB224F2689BC0aFc5b6721a0807d07017D8CDddf8');
+  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach('0x07B0B00B9008798055071dde6f2d343782b35dC6');
 
-  const poolRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(ADDRESS_ZERO));
-  const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
+  // const poolRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(ADDRESS_ZERO));
+  // const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
 
-  const capPool = await (await ethers.getContractFactory("PoolCAP")).attach(await router.capPool());
+  // const capPool = await (await ethers.getContractFactory("PoolCAP")).attach(await router.capPool());
 
-  const capRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
-  const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
+  // const capRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
+  // const capRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getCapRewards(usdcAddress));
   
-  console.log('Contracts set', router.address);
+  // console.log('Contracts set', router.address);
 
   // // Mint some CAP, USDC
   // await usdc.connect(user2).mint(parseUnits("100000", 6));
   // await cap.connect(user2).mint(parseUnits("1000", 18));
 
-  console.log('Trading contract balance (ETH)', formatUnits(await provider.getBalance(trading.address), 18));
+  // console.log('Trading contract balance (ETH)', formatUnits(await provider.getBalance(trading.address), 18));
 
   let tx, receipt;
 
@@ -306,12 +309,12 @@ async function main() {
 
   // Owner methods
 
-  // await poolWETH.setParams(
-  //   180,
-  //   100,
-  //   parseUnits("100"),
-  //   20
-  // );
+  await poolUSDC.setParams(
+    1,
+    0,
+    parseUnits("100000", 18),
+    0
+  , {gasLimit: 2000000});
 
   // console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), (await poolWETH.minDepositTime()).toString(), (await poolWETH.utilizationMultiplier()).toString(), (await poolWETH.maxCap()).toString(), (await poolWETH.withdrawFee()).toString());
 

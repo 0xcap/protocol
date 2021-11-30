@@ -127,9 +127,9 @@ async function main() {
   console.log("poolRewardsMIM deployed to:", poolRewardsMIM.address);
 
   // Rewards for Cap
-  const capRewardsETH = await Rewards.deploy(poolCAP.address, ADDRESS_ZERO);
-  await capRewardsETH.deployed();
-  console.log("capRewardsETH deployed to:", capRewardsETH.address);
+  const capRewardsAVAX = await Rewards.deploy(poolCAP.address, ADDRESS_ZERO);
+  await capRewardsAVAX.deployed();
+  console.log("capRewardsAVAX deployed to:", capRewardsAVAX.address);
 
   const capRewardsUSDC = await Rewards.deploy(poolCAP.address, usdc.address);
   await capRewardsUSDC.deployed();
@@ -148,7 +148,7 @@ async function main() {
     darkOracleAddress
   );
 
-  await router.setPool(ADDRESS_ZERO, poolETH.address);
+  await router.setPool(ADDRESS_ZERO, poolAVAX.address);
   await router.setPool(usdc.address, poolUSDC.address);
   await router.setPool(mim.address, poolMIM.address);
 
@@ -163,11 +163,11 @@ async function main() {
   await router.setCapShare(mim.address, 1000);
   console.log("set Cap shares");
 
-  await router.setPoolRewards(ADDRESS_ZERO, poolRewardsETH.address);
+  await router.setPoolRewards(ADDRESS_ZERO, poolRewardsAVAX.address);
   await router.setPoolRewards(usdc.address, poolRewardsUSDC.address);
   await router.setPoolRewards(mim.address, poolRewardsMIM.address);
 
-  await router.setCapRewards(ADDRESS_ZERO, capRewardsETH.address);
+  await router.setCapRewards(ADDRESS_ZERO, capRewardsAVAX.address);
   await router.setCapRewards(usdc.address, capRewardsUSDC.address);
   await router.setCapRewards(mim.address, capRewardsMIM.address);
   
@@ -181,13 +181,13 @@ async function main() {
   await treasury.setRouter(router.address);
   await poolCAP.setRouter(router.address);
   await oracle.setRouter(router.address);
-  await poolETH.setRouter(router.address);
+  await poolAVAX.setRouter(router.address);
   await poolUSDC.setRouter(router.address);
   await poolMIM.setRouter(router.address);
-  await poolRewardsETH.setRouter(router.address);
+  await poolRewardsAVAX.setRouter(router.address);
   await poolRewardsUSDC.setRouter(router.address);
   await poolRewardsMIM.setRouter(router.address);
-  await capRewardsETH.setRouter(router.address);
+  await capRewardsAVAX.setRouter(router.address);
   await capRewardsUSDC.setRouter(router.address);
   await capRewardsMIM.setRouter(router.address);
 

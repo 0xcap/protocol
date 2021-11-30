@@ -8,9 +8,9 @@ module.exports = {
   defaultNetwork: "hardhat",
   networks: {
     hardhat: {
-      forking: {
-        url: process.env.FORKING_URL_AVALANCHE
-      },
+      // forking: {
+      //   url: process.env.FORKING_URL_ARBITRUM
+      // },
       // mining: {
       //   auto: true,
       //   interval: [10000, 20000]

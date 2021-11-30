@@ -34,8 +34,6 @@ contract Pool {
 
     uint256 public openInterest;
 
-    uint256 lastBalance;
-
 	uint256 public constant UNIT = 10**18;
 
     // Events
@@ -98,8 +96,11 @@ contract Pool {
 
 	function deposit(uint256 amount) external payable {
 
+		uint256 lastBalance = _getCurrentBalance();
+
 		if (currency == address(0)) {
 			amount = msg.value;
+			lastBalance -= amount;
 		} else {
 			_transferIn(amount);
 		}
@@ -115,8 +116,6 @@ contract Pool {
 
         totalSupply += clpAmountToMint;
         balances[msg.sender] += clpAmountToMint;
-
-        lastBalance = _getCurrentBalance();
 
         emit Deposit(
         	msg.sender,
