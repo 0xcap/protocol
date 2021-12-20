@@ -84,8 +84,8 @@ async function main() {
   // const capAddress = '0x292E27B2b439Bb485265aBA27c131247B13593c1';
   // const cap = await (await ethers.getContractFactory("MockToken")).attach(capAddress);
 
-  // const poolETH = await (await ethers.getContractFactory("Pool")).attach('0xB224F2689BC0aFc5b6721a0807d07017D8CDddf8');
-  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach('0x07B0B00B9008798055071dde6f2d343782b35dC6');
+  const poolETH = await (await ethers.getContractFactory("Pool")).attach('0xE0cCd451BB57851c1B2172c07d8b4A7c6952a54e');
+  const poolUSDC = await (await ethers.getContractFactory("Pool")).attach('0x958cc92297e6F087f41A86125BA8E121F0FbEcF2');
 
   // const poolRewardsETH = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(ADDRESS_ZERO));
   // const poolRewardsUSDC = await (await ethers.getContractFactory("Rewards")).attach(await router.getPoolRewards(usdcAddress));
@@ -309,12 +309,12 @@ async function main() {
 
   // Owner methods
 
-  await poolUSDC.setParams(
-    1,
-    0,
-    parseUnits("100000", 18),
-    0
-  , {gasLimit: 2000000});
+  await poolETH.setParams(
+    3600,
+    5000,
+    parseUnits("10000000", 18),
+    30
+  );
 
   // console.log('pool WETH params', (await poolWETH.maxDailyDrawdown()).toString(), (await poolWETH.minDepositTime()).toString(), (await poolWETH.utilizationMultiplier()).toString(), (await poolWETH.maxCap()).toString(), (await poolWETH.withdrawFee()).toString());
 
